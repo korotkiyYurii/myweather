@@ -1,11 +1,20 @@
-name: Test
+name: Update SaveEcoBot Data
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  update:
     runs-on: ubuntu-latest
 
     steps:
-      - run: echo Hello
+      - uses: actions/checkout@v4
+
+      - name: Create data folder
+        run: mkdir -p data
+
+      - name: Download station
+        run: curl -L https://www.saveecobot.com/station/25862.json -o data/station.json
+
+      - name: Show files
+        run: ls -la data
