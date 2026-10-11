@@ -37,3 +37,8 @@ jobs:
           git commit -m "Update station data" || echo "Nothing to commit"
 
           git push
+
+          - name: Download AQI history
+  run: |
+    curl -L "https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json" \
+    -o data/aqi.json
