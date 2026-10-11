@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Дашборд станції — Житомир</title>
+  <title>Погода в домі</title>
   <script type="text/javascript" nonce="0e1bde65ab4c4aef90986e747d5" src="//injections.adguard.org?ts=1791659579401&amp;type=content-script&amp;dmn=storage.googleapis.com&amp;url=https%3A%2F%2Fstorage.googleapis.com%2Fgrok-terminal-artifacts-prod%2F67ddbaa6-70a6-4577-ba32-d0cd57fceb50%2Fea9745c6-4aa8-4bae-92ff-b79fcb2174df%2Fartifacts%2Fweather_dashboard.html%3FX-Goog-Algorithm%3DGOOG4-RSA-SHA256%26X-Goog-Credential%3Dgrok-backend-production%2540enterprise-api-425510.iam.gserviceaccount.com%252F20261010%252Fauto%252Fstorage%252Fgoog4_request%26X-Goog-Date%3D20261010T193846Z%26X-Goog-Expires%3D3600%26X-Goog-SignedHeaders%3Dhost%26response-content-disposition%3Dattachment%253B%2Bfilename%253D%2522weather_dashboard.html%2522%26X-Goog-Signature%3D5cf14f6e213e4c2aecbedb696fe3069063fc90ac94d03e89e66e8065fe2d827fca0f1834d573dec4865360d7e77bc66c4ba07d2750fd8fd1b47a5a85f496c582c67d02a8321ff054491783bdbeb82baf78003d49b830c5df61da99b12785783a0a75f1a409069ccd5b99acfc39caf8be014b73b15ff11314fe21424f6fbed306abdc480243e20c7cb6658cb3e075c2f45ea1396e2b57af779436a163bb08256a5e691bb6ec6ebbfa9acf378b3e6e4ddc8dfe7c4b7e79684f03017778c1651877ebd749117d63e02b9b1f0a050df59c57a9b46b06d57343dddaf36ab0aafbae29f85c74778bcb68d91558dc7d29eb11e0b8165e15cf1991699b61f1da529b9207&amp;app=chrome.exe&amp;css=3&amp;js=1&amp;rel=1&amp;rji=1&amp;sbe=1&amp;stealth=1&amp;st-dnt"></script><script type="text/javascript" nonce="0e1bde65ab4c4aef90986e747d5" src="//injections.adguard.org?ts=1791659579401&amp;name=AdGuard%20Extra&amp;name=AdGuard%20Popup%20Blocker&amp;type=user-script"></script><link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -223,8 +223,8 @@
   </div>
 
   <script>
-    const STATION_URL = 'https://www.saveecobot.com/station/25862.json';
-    const HISTORY_AQI_URL = 'https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json';
+    const STATION_URL = './data/station.json';
+    const HISTORY_AQI_URL = './data/aqi.json';
     const METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe/Kyiv&forecast_days=1';
     const LS_KEY = 'seb_station_25862_prev';
     // Trends derived from chart series (preferred over localStorage buffer)
