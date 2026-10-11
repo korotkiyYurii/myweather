@@ -26,3 +26,14 @@ jobs:
         run: |
           ls -lah data
           cat data/station.json | head -20
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add data/station.json
+
+          git commit -m "Update station data" || echo "Nothing to commit"
+
+          git push
