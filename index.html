@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Дашборд станції — Житомир</title>
+  <script type="text/javascript" nonce="0e1bde65ab4c4aef90986e747d5" src="//injections.adguard.org?ts=1791659579401&amp;type=content-script&amp;dmn=storage.googleapis.com&amp;url=https%3A%2F%2Fstorage.googleapis.com%2Fgrok-terminal-artifacts-prod%2F67ddbaa6-70a6-4577-ba32-d0cd57fceb50%2Fea9745c6-4aa8-4bae-92ff-b79fcb2174df%2Fartifacts%2Fweather_dashboard.html%3FX-Goog-Algorithm%3DGOOG4-RSA-SHA256%26X-Goog-Credential%3Dgrok-backend-production%2540enterprise-api-425510.iam.gserviceaccount.com%252F20261010%252Fauto%252Fstorage%252Fgoog4_request%26X-Goog-Date%3D20261010T193846Z%26X-Goog-Expires%3D3600%26X-Goog-SignedHeaders%3Dhost%26response-content-disposition%3Dattachment%253B%2Bfilename%253D%2522weather_dashboard.html%2522%26X-Goog-Signature%3D5cf14f6e213e4c2aecbedb696fe3069063fc90ac94d03e89e66e8065fe2d827fca0f1834d573dec4865360d7e77bc66c4ba07d2750fd8fd1b47a5a85f496c582c67d02a8321ff054491783bdbeb82baf78003d49b830c5df61da99b12785783a0a75f1a409069ccd5b99acfc39caf8be014b73b15ff11314fe21424f6fbed306abdc480243e20c7cb6658cb3e075c2f45ea1396e2b57af779436a163bb08256a5e691bb6ec6ebbfa9acf378b3e6e4ddc8dfe7c4b7e79684f03017778c1651877ebd749117d63e02b9b1f0a050df59c57a9b46b06d57343dddaf36ab0aafbae29f85c74778bcb68d91558dc7d29eb11e0b8165e15cf1991699b61f1da529b9207&amp;app=chrome.exe&amp;css=3&amp;js=1&amp;rel=1&amp;rji=1&amp;sbe=1&amp;stealth=1&amp;st-dnt"></script><script type="text/javascript" nonce="0e1bde65ab4c4aef90986e747d5" src="//injections.adguard.org?ts=1791659579401&amp;name=AdGuard%20Extra&amp;name=AdGuard%20Popup%20Blocker&amp;type=user-script"></script><link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419; --card: #1a2332; --card-hover: #243044; --border: #2a3a4f;
+      --text: #e8eef5; --text-muted: #8b9cb3; --accent: #3b82f6;
+      --green: #22c55e; --yellow: #eab308; --orange: #f97316; --red: #ef4444;
+      --purple: #a855f7; --cyan: #06b6d4;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse at 20% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(34, 197, 94, 0.06) 0%, transparent 50%);
+    }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px 20px 48px; }
+    header {
+      display: flex; flex-wrap: wrap; justify-content: space-between;
+      align-items: flex-start; gap: 16px; margin-bottom: 32px;
+      padding-bottom: 24px; border-bottom: 1px solid var(--border);
+    }
+    .header-left h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .header-left .subtitle { color: var(--text-muted); font-size: 0.95rem; }
+    .header-left .location {
+      display: flex; align-items: center; gap: 6px; margin-top: 8px;
+      font-size: 0.9rem; color: var(--text-muted);
+    }
+    .header-left .location svg { width: 16px; height: 16px; opacity: 0.7; }
+    .refresh-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      padding: 10px 18px; border-radius: 10px; font-size: 0.875rem; font-weight: 500;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .refresh-btn:hover { background: var(--card-hover); border-color: var(--accent); }
+    .refresh-btn.loading svg { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .aqi-hero {
+      background: linear-gradient(135deg, #1e3a5f 0%, #1a2332 100%);
+      border: 1px solid var(--border); border-radius: 16px;
+      padding: 28px 32px; margin-bottom: 24px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 32px;
+      position: relative; overflow: hidden;
+    }
+    .aqi-hero::before {
+      content: ''; position: absolute; top: -50%; right: -20%;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .aqi-value-block { text-align: center; min-width: 120px; }
+    .aqi-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px; }
+    .aqi-number { font-size: 4rem; font-weight: 700; line-height: 1; letter-spacing: -0.03em; }
+    .aqi-status { display: inline-block; margin-top: 10px; padding: 4px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+    .aqi-trend { margin-top: 8px; font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 4px; }
+    .aqi-info { flex: 1; min-width: 200px; }
+    .aqi-info h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 8px; }
+    .aqi-info p { color: var(--text-muted); font-size: 0.95rem; line-height: 1.5; }
+    .aqi-scale { display: flex; gap: 4px; margin-top: 16px; height: 8px; border-radius: 4px; overflow: hidden; }
+    .aqi-scale span { flex: 1; height: 100%; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .metric-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 20px; transition: all 0.2s; position: relative; overflow: hidden;
+    }
+    .metric-card:hover { background: var(--card-hover); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+    .metric-card .icon {
+      width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center;
+      justify-content: center; margin-bottom: 14px; font-size: 1.25rem;
+    }
+    .metric-card .label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .metric-card .value-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .metric-card .value { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
+    .metric-card .unit { font-size: 0.9rem; font-weight: 500; color: var(--text-muted); margin-left: 4px; }
+    .metric-card .trend { font-size: 0.95rem; font-weight: 700; display: inline-flex; align-items: center; gap: 2px; padding: 3px 10px; border-radius: 8px; }
+    .metric-card .trend-slot { display: inline-flex; align-items: center; }
+    .trend-up { color: #f87171; background: rgba(239, 68, 68, 0.15); }
+    .trend-down { color: #4ade80; background: rgba(34, 197, 94, 0.15); }
+    .trend-flat { color: #8b9cb3; background: rgba(139, 156, 179, 0.12); }
+    .metric-card .updated { font-size: 0.75rem; color: var(--text-muted); margin-top: 10px; opacity: 0.8; }
+    .history-section {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 24px; margin-bottom: 24px;
+    }
+    .history-section h3 { font-size: 1rem; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    .history-section .history-sub { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px; }
+    .chart-wrap { position: relative; height: 280px; width: 100%; }
+    .history-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; margin-top: 20px; }
+    .hist-stat { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; text-align: center; }
+    .hist-stat .hs-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px; }
+    .hist-stat .hs-value { font-size: 1.2rem; font-weight: 700; }
+    .charts-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 24px; }
+    .mini-chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+    .mini-chart-card h4 { font-size: 0.85rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .mini-chart-card h4 .mini-trend { font-size: 0.8rem; font-weight: 600; }
+    .mini-chart-wrap { position: relative; height: 220px; }
+    .note { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; line-height: 1.4; }
+    .info-section { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 24px; }
+    .info-section h3 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+    .info-item { display: flex; flex-direction: column; gap: 4px; }
+    .info-item .info-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .info-item .info-value { font-size: 0.95rem; font-weight: 500; }
+    footer { text-align: center; padding-top: 24px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    .status-good { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+    .status-moderate { background: rgba(234, 179, 8, 0.2); color: #facc15; }
+    .status-unhealthy-sg { background: rgba(249, 115, 22, 0.2); color: #fb923c; }
+    .status-unhealthy { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .status-very-unhealthy { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .status-hazardous { background: rgba(127, 29, 29, 0.3); color: #fca5a5; }
+    .aqi-good { color: #4ade80; } .aqi-moderate { color: #facc15; }
+    .aqi-unhealthy-sg { color: #fb923c; } .aqi-unhealthy { color: #f87171; }
+    .aqi-very-unhealthy { color: #c084fc; } .aqi-hazardous { color: #fca5a5; }
+    .loading-overlay { display: none; position: fixed; inset: 0; background: rgba(15,20,25,0.7); z-index: 100; align-items: center; justify-content: center; }
+    .loading-overlay.active { display: flex; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @media (max-width: 600px) {
+      .aqi-number { font-size: 3rem; } .header-left h1 { font-size: 1.4rem; }
+      .metrics-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="loading-overlay" id="loading"><div class="spinner"></div></div>
+  <div class="container">
+    <header>
+      <div class="header-left">
+        <h1>🌬️ Станція моніторингу якості повітря</h1>
+        <div class="subtitle" id="sensor-name">вулиця Героїв Десантників, 25</div>
+        <div class="location">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <span id="location-text">м. Житомир, Житомирська область, Україна</span>
+        </div>
+      </div>
+      <button class="refresh-btn" id="refresh-btn" onclick="refreshAll()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Оновити
+      </button>
+    </header>
+
+    <div class="aqi-hero">
+      <div class="aqi-value-block">
+        <div class="aqi-label">Індекс якості повітря (AQI)</div>
+        <div class="aqi-number" id="aqi-value">62</div>
+        <div class="aqi-status status-moderate" id="aqi-status">Помірний</div>
+        <div class="aqi-trend" id="aqi-trend"></div>
+      </div>
+      <div class="aqi-info">
+        <h2 id="aqi-title">Помірна якість повітря</h2>
+        <p id="aqi-desc">Чутливі групи можуть відчувати легкі проблеми зі здоров'ям.</p>
+        <div class="aqi-scale">
+          <span style="background:#22c55e"></span><span style="background:#eab308"></span>
+          <span style="background:#f97316"></span><span style="background:#ef4444"></span>
+          <span style="background:#a855f7"></span><span style="background:#7f1d1d"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="metrics-grid" id="metrics-grid"></div>
+
+    <div class="history-section">
+      <h3>📈 Історія AQI за останні 2 доби</h3>
+      <p class="history-sub">Погодинні значення індексу якості повітря (SaveEcoBot)</p>
+      <div class="chart-wrap"><canvas id="aqi-chart"></canvas></div>
+      <div class="history-stats" id="history-stats"></div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="mini-chart-card">
+        <h4>🌡️ Температура <span class="mini-trend" id="trend-temp"></span></h4>
+        <div class="mini-chart-wrap"><canvas id="temp-chart"></canvas></div>
+        <p class="note">Open-Meteo · координати станції</p>
+      </div>
+      <div class="mini-chart-card">
+        <h4>💧 Вологість <span class="mini-trend" id="trend-hum"></span></h4>
+        <div class="mini-chart-wrap"><canvas id="hum-chart"></canvas></div>
+        <p class="note">Open-Meteo · координати станції</p>
+      </div>
+      <div class="mini-chart-card">
+        <h4>📊 Тиск <span class="mini-trend" id="trend-press"></span></h4>
+        <div class="mini-chart-wrap"><canvas id="press-chart"></canvas></div>
+        <p class="note">мм рт.ст. · Open-Meteo</p>
+      </div>
+    </div>
+
+    <div class="info-section">
+      <h3>📍 Інформація про станцію</h3>
+      <div class="info-grid">
+        <div class="info-item"><span class="info-label">ID станції</span><span class="info-value" id="info-id">25862</span></div>
+        <div class="info-item"><span class="info-label">Платформа</span><span class="info-value" id="info-platform">SaveDnipro</span></div>
+        <div class="info-item"><span class="info-label">Тип</span><span class="info-value" id="info-type">Станція моніторингу якості повітря</span></div>
+        <div class="info-item"><span class="info-label">Координати</span><span class="info-value" id="info-coords">50.278178, 28.617254</span></div>
+        <div class="info-item"><span class="info-label">Останнє вимірювання</span><span class="info-value" id="info-last">—</span></div>
+        <div class="info-item"><span class="info-label">Всього вимірювань</span><span class="info-value" id="info-count">—</span></div>
+        <div class="info-item"><span class="info-label">Створено</span><span class="info-value" id="info-created">—</span></div>
+        <div class="info-item"><span class="info-label">AQI оновлено</span><span class="info-value" id="info-aqi-updated">—</span></div>
+      </div>
+    </div>
+
+    <footer>
+      Поточні дані: <a href="https://www.saveecobot.com/station/25862" target="_blank" rel="noopener">SaveEcoBot / SaveDnipro</a>
+      · Історія погоди: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>
+      · <span id="footer-time"></span>
+    </footer>
+  </div>
+
+  <script>
+    const STATION_URL = 'https://www.saveecobot.com/station/25862.json';
+    const HISTORY_AQI_URL = 'https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json';
+    const METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe/Kyiv&forecast_days=1';
+    const LS_KEY = 'seb_station_25862_prev';
+    // Trends derived from chart series (preferred over localStorage buffer)
+    const SERIES_TRENDS = {}; // key -> { dir, delta, avg }
+
+
+    const PA_TO_MMHG = (v) => (v / 1000) * 0.750061683;
+    const HPA_TO_MMHG = (v) => v * 0.750061683;
+
+    const AQI_LEVELS = [
+      { max: 50, status: 'Добре', title: 'Добра якість повітря', desc: 'Якість повітря задовільна, ризик для здоров\'я мінімальний.', cls: 'good', colorCls: 'aqi-good' },
+      { max: 100, status: 'Помірний', title: 'Помірна якість повітря', desc: 'Чутливі групи можуть відчувати легкі проблеми зі здоров\'ям. Обмежте тривале перебування на відкритому повітрі.', cls: 'moderate', colorCls: 'aqi-moderate' },
+      { max: 150, status: 'Шкідливо для чутливих', title: 'Шкідливо для чутливих груп', desc: 'Діти, літні люди та особи з захворюваннями дихальних шляхів можуть відчувати дискомфорт.', cls: 'unhealthy-sg', colorCls: 'aqi-unhealthy-sg' },
+      { max: 200, status: 'Шкідливо', title: 'Шкідлива якість повітря', desc: 'Кожен може відчути негативний вплив. Обмежте перебування на вулиці.', cls: 'unhealthy', colorCls: 'aqi-unhealthy' },
+      { max: 300, status: 'Дуже шкідливо', title: 'Дуже шкідлива якість повітря', desc: 'Серйозний ризик для здоров\'я. Уникайте активностей на відкритому повітрі.', cls: 'very-unhealthy', colorCls: 'aqi-very-unhealthy' },
+      { max: Infinity, status: 'Небезпечно', title: 'Небезпечна якість повітря', desc: 'Надзвичайна ситуація. Усім рекомендується залишатися в приміщенні.', cls: 'hazardous', colorCls: 'aqi-hazardous' },
+    ];
+
+    const METRIC_META = {
+      pm25: { label: 'PM2.5', unit: 'µg/m³', icon: '🌫️', color: '#3b82f6', decimals: 1 },
+      pm10: { label: 'PM10', unit: 'µg/m³', icon: '💨', color: '#06b6d4', decimals: 1 },
+      temperature: { label: 'Температура', unit: '°C', icon: '🌡️', color: '#f97316', decimals: 1 },
+      humidity: { label: 'Вологість', unit: '%', icon: '💧', color: '#22c55e', decimals: 1 },
+      pressure_pa: { label: 'Тиск', unit: 'мм рт.ст.', icon: '📊', color: '#a855f7', decimals: 1, transform: PA_TO_MMHG },
+      heca_temperature: { label: 'Темп. (HECA)', unit: '°C', icon: '🌡️', color: '#fb923c', decimals: 1 },
+      heca_humidity: { label: 'Вологість (HECA)', unit: '%', icon: '💧', color: '#4ade80', decimals: 1 },
+    };
+
+    const INITIAL_DATA = {"id":25862,"longitude":"28.617254","latitude":"50.278178","city_name":"Житомир","region_name":"Житомирська область","country_name":"Україна","sensor_name":"вулиця Героїв Десантників, 25","type_name":"Станція моніторингу якості повітря","platform_name":"SaveDnipro","aqi":62,"aqi_updated_at":"2026-10-10 22:00:00","created_at":"2026-01-08 12:14:54","last_measurement_at":"2026-10-10 22:12:54","measurements_count":90632,"last_data":[{"phenomenon":"pm25","value":18,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"pm10","value":29.8,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"temperature","value":13.73,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"humidity","value":61.48,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"pressure_pa","value":990599.8,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"heca_temperature","value":15.75,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"heca_humidity","value":60.29,"updated_at":"2026-10-10 22:20:10","is_old":false}]};
+
+    const HISTORY_AQI_SNAP = [["2026-10-08 23:00:00",85],["2026-10-09 00:00:00",63],["2026-10-09 01:00:00",52],["2026-10-09 02:00:00",39],["2026-10-09 03:00:00",33],["2026-10-09 04:00:00",30],["2026-10-09 05:00:00",29],["2026-10-09 06:00:00",28],["2026-10-09 07:00:00",27],["2026-10-09 08:00:00",25],["2026-10-09 09:00:00",24],["2026-10-09 10:00:00",25],["2026-10-09 11:00:00",25],["2026-10-09 12:00:00",25],["2026-10-09 13:00:00",24],["2026-10-09 14:00:00",22],["2026-10-09 15:00:00",16],["2026-10-09 16:00:00",10],["2026-10-09 17:00:00",9],["2026-10-09 20:00:00",12],["2026-10-09 21:00:00",14],["2026-10-09 22:00:00",16],["2026-10-09 23:00:00",14],["2026-10-10 00:00:00",14],["2026-10-10 01:00:00",13],["2026-10-10 02:00:00",11],["2026-10-10 03:00:00",10],["2026-10-10 04:00:00",9],["2026-10-10 05:00:00",8],["2026-10-10 06:00:00",8],["2026-10-10 07:00:00",8],["2026-10-10 08:00:00",10],["2026-10-10 09:00:00",11],["2026-10-10 10:00:00",12],["2026-10-10 11:00:00",10],["2026-10-10 12:00:00",8],["2026-10-10 13:00:00",8],["2026-10-10 14:00:00",7],["2026-10-10 15:00:00",5],["2026-10-10 16:00:00",6],["2026-10-10 17:00:00",7],["2026-10-10 18:00:00",9],["2026-10-10 19:00:00",19],["2026-10-10 20:00:00",48],["2026-10-10 21:00:00",62]];
+
+    const METEO_SNAP = {"temp":[["2026-10-08T22:00",16.2],["2026-10-08T23:00",15.8],["2026-10-09T00:00",15.1],["2026-10-09T01:00",14.7],["2026-10-09T02:00",14.2],["2026-10-09T03:00",14.0],["2026-10-09T04:00",13.6],["2026-10-09T05:00",13.2],["2026-10-09T06:00",12.6],["2026-10-09T07:00",12.5],["2026-10-09T08:00",12.6],["2026-10-09T09:00",13.2],["2026-10-09T10:00",13.4],["2026-10-09T11:00",14.0],["2026-10-09T12:00",14.4],["2026-10-09T13:00",14.8],["2026-10-09T14:00",15.2],["2026-10-09T15:00",13.9],["2026-10-09T16:00",13.1],["2026-10-09T17:00",12.6],["2026-10-09T18:00",12.2],["2026-10-09T19:00",11.1],["2026-10-09T20:00",10.3],["2026-10-09T21:00",9.4],["2026-10-09T22:00",8.8],["2026-10-09T23:00",8.2],["2026-10-10T00:00",7.4],["2026-10-10T01:00",7.0],["2026-10-10T02:00",6.5],["2026-10-10T03:00",6.4],["2026-10-10T04:00",6.4],["2026-10-10T05:00",6.5],["2026-10-10T06:00",6.0],["2026-10-10T07:00",5.9],["2026-10-10T08:00",6.4],["2026-10-10T09:00",7.8],["2026-10-10T10:00",10.2],["2026-10-10T11:00",12.2],["2026-10-10T12:00",13.6],["2026-10-10T13:00",14.9],["2026-10-10T14:00",15.7],["2026-10-10T15:00",17.1],["2026-10-10T16:00",17.4],["2026-10-10T17:00",17.4],["2026-10-10T18:00",16.8],["2026-10-10T19:00",15.8],["2026-10-10T20:00",15.2],["2026-10-10T21:00",14.6],["2026-10-10T22:00",14.3],["2026-10-10T23:00",13.9]],"humidity":[["2026-10-08T22:00",57],["2026-10-08T23:00",58],["2026-10-09T00:00",59],["2026-10-09T01:00",61],["2026-10-09T02:00",64],["2026-10-09T03:00",69],["2026-10-09T04:00",74],["2026-10-09T05:00",79],["2026-10-09T06:00",84],["2026-10-09T07:00",85],["2026-10-09T08:00",84],["2026-10-09T09:00",79],["2026-10-09T10:00",83],["2026-10-09T11:00",80],["2026-10-09T12:00",82],["2026-10-09T13:00",85],["2026-10-09T14:00",82],["2026-10-09T15:00",87],["2026-10-09T16:00",67],["2026-10-09T17:00",72],["2026-10-09T18:00",78],["2026-10-09T19:00",72],["2026-10-09T20:00",74],["2026-10-09T21:00",79],["2026-10-09T22:00",80],["2026-10-09T23:00",83],["2026-10-10T00:00",85],["2026-10-10T01:00",85],["2026-10-10T02:00",87],["2026-10-10T03:00",86],["2026-10-10T04:00",85],["2026-10-10T05:00",84],["2026-10-10T06:00",84],["2026-10-10T07:00",85],["2026-10-10T08:00",83],["2026-10-10T09:00",77],["2026-10-10T10:00",68],["2026-10-10T11:00",61],["2026-10-10T12:00",60],["2026-10-10T13:00",56],["2026-10-10T14:00",52],["2026-10-10T15:00",45],["2026-10-10T16:00",43],["2026-10-10T17:00",41],["2026-10-10T18:00",45],["2026-10-10T19:00",51],["2026-10-10T20:00",54],["2026-10-10T21:00",59],["2026-10-10T22:00",60],["2026-10-10T23:00",62]],"pressure_mmhg":[["2026-10-08T22:00",740.9],["2026-10-08T23:00",740.7],["2026-10-09T00:00",740.5],["2026-10-09T01:00",740.2],["2026-10-09T02:00",739.6],["2026-10-09T03:00",739.4],["2026-10-09T04:00",739.2],["2026-10-09T05:00",738.9],["2026-10-09T06:00",739.1],["2026-10-09T07:00",738.7],["2026-10-09T08:00",738.7],["2026-10-09T09:00",738.9],["2026-10-09T10:00",738.9],["2026-10-09T11:00",738.9],["2026-10-09T12:00",739.6],["2026-10-09T13:00",740.2],["2026-10-09T14:00",740.5],["2026-10-09T15:00",741.2],["2026-10-09T16:00",741.2],["2026-10-09T17:00",741.4],["2026-10-09T18:00",741.8],["2026-10-09T19:00",742.1],["2026-10-09T20:00",742.2],["2026-10-09T21:00",742.6],["2026-10-09T22:00",742.6],["2026-10-09T23:00",742.9],["2026-10-10T00:00",743.2],["2026-10-10T01:00",743.0],["2026-10-10T02:00",743.1],["2026-10-10T03:00",742.9],["2026-10-10T04:00",743.1],["2026-10-10T05:00",742.9],["2026-10-10T06:00",742.9],["2026-10-10T07:00",742.8],["2026-10-10T08:00",742.9],["2026-10-10T09:00",743.2],["2026-10-10T10:00",743.2],["2026-10-10T11:00",743.2],["2026-10-10T12:00",742.9],["2026-10-10T13:00",742.8],["2026-10-10T14:00",742.3],["2026-10-10T15:00",742.2],["2026-10-10T16:00",741.7],["2026-10-10T17:00",741.4],["2026-10-10T18:00",741.7],["2026-10-10T19:00",741.7],["2026-10-10T20:00",741.6],["2026-10-10T21:00",741.5],["2026-10-10T22:00",741.2],["2026-10-10T23:00",741.3]]};
+
+    function getAqiLevel(aqi) { return AQI_LEVELS.find(l => aqi <= l.max) || AQI_LEVELS[AQI_LEVELS.length - 1]; }
+
+    function formatDate(str) {
+      if (!str) return '—';
+      // SaveEcoBot timestamps are already local (Europe/Kyiv), not UTC
+      const s = String(str).trim().replace(' ', 'T');
+      // Parse as Kyiv local by attaching fixed offset
+      const withOffset = /[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : (s + '+03:00');
+      const d = new Date(withOffset);
+      if (isNaN(d)) return str;
+      const pad = n => String(n).padStart(2, '0');
+      // Format in Europe/Kyiv explicitly
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Kyiv',
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: false
+      }).formatToParts(d);
+      const get = t => (parts.find(p => p.type === t) || {}).value || '';
+      return get('day') + '.' + get('month') + '.' + get('year') + ', ' + get('hour') + ':' + get('minute');
+    }
+
+    /** Parse SaveEcoBot / local timestamp string → Date (Kyiv) */
+    function parseKyiv(str) {
+      if (!str) return null;
+      const s = String(str).trim().replace(' ', 'T');
+      const withOffset = /[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : (s + '+03:00');
+      const d = new Date(withOffset);
+      return isNaN(d) ? null : d;
+    }
+    function formatNumber(n) { return new Intl.NumberFormat('uk-UA').format(n); }
+    function aqiColor(v) {
+      if (v <= 50) return '#22c55e'; if (v <= 100) return '#eab308'; if (v <= 150) return '#f97316';
+      if (v <= 200) return '#ef4444'; if (v <= 300) return '#a855f7'; return '#7f1d1d';
+    }
+
+    /**
+     * History buffer in localStorage:
+     * { readings: [ { t: ms, values: { pm25: n, ... } }, ... ] }  (keep ~2h)
+     */
+    function loadHistoryBuf() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(LS_KEY) || '{"readings":[]}');
+        return Array.isArray(raw.readings) ? raw.readings : [];
+      } catch { return []; }
+    }
+
+    function pushHistoryBuf(valuesMap) {
+      try {
+        const now = Date.now();
+        let buf = loadHistoryBuf().filter(r => now - r.t < 2 * 3600 * 1000);
+        buf.push({ t: now, values: valuesMap });
+        // keep last 120 entries max
+        if (buf.length > 120) buf = buf.slice(-120);
+        localStorage.setItem(LS_KEY, JSON.stringify({ readings: buf }));
+      } catch {}
+    }
+
+    /**
+     * Compare current value to average over the previous 30-minute window
+     * (readings from 30–60 min ago). Falls back to mean of older samples,
+     * then to previous single reading. Always returns up/down (no flat zero).
+     */
+    function computeTrend(key, current) {
+      const buf = loadHistoryBuf();
+      const now = Date.now();
+      const winStart = now - 60 * 60 * 1000;   // 60 min ago
+      const winEnd   = now - 30 * 60 * 1000;   // 30 min ago
+
+      // Preferred: average of samples in [now-60m, now-30m]
+      let samples = buf
+        .filter(r => r.t >= winStart && r.t < winEnd && r.values && typeof r.values[key] === 'number')
+        .map(r => r.values[key]);
+
+      // Fallback: any samples older than 15 min
+      if (!samples.length) {
+        samples = buf
+          .filter(r => r.t < now - 15 * 60 * 1000 && r.values && typeof r.values[key] === 'number')
+          .map(r => r.values[key]);
+      }
+
+      // Fallback: previous reading different from current time
+      if (!samples.length) {
+        for (let i = buf.length - 1; i >= 0; i--) {
+          const r = buf[i];
+          if (r.values && typeof r.values[key] === 'number' && Math.abs(r.values[key] - current) > 1e-9) {
+            samples = [r.values[key]];
+            break;
+          }
+        }
+      }
+
+      if (!samples.length) return null;
+
+      const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+      const delta = current - avg;
+      // Always pick a direction; tiny epsilon only for pure equality
+      if (Math.abs(delta) < 1e-9) return { dir: 'up', delta: 0, avg };
+      return { dir: delta > 0 ? 'up' : 'down', delta, avg };
+    }
+
+    /**
+     * For time series (hourly): compare last point to average of points
+     * in the previous half-hour window relative to last timestamp.
+     * With hourly data that means the previous point(s).
+     */
+    function trendFromSeries(series) {
+      if (!series || series.length < 2) return null;
+      const lastTs = parseKyiv(series[series.length - 1][0]) || new Date(String(series[series.length - 1][0]).replace(' ', 'T'));
+      const lastVal = series[series.length - 1][1];
+      if (lastVal == null || isNaN(lastTs)) return null;
+
+      const tEnd = lastTs.getTime() - 30 * 60 * 1000;
+      const tStart = lastTs.getTime() - 60 * 60 * 1000;
+
+      const windowVals = [];
+      for (let i = 0; i < series.length - 1; i++) {
+        const ts = parseKyiv(series[i][0]) || new Date(String(series[i][0]).replace(' ', 'T'));
+        if (isNaN(ts)) continue;
+        const ms = ts.getTime();
+        if (ms >= tStart && ms < tEnd && series[i][1] != null) windowVals.push(series[i][1]);
+      }
+
+      // Hourly data: previous half-hour window may only contain the prior hour
+      if (!windowVals.length && series.length >= 2) {
+        const prev = series[series.length - 2][1];
+        if (prev != null) windowVals.push(prev);
+      }
+
+      if (!windowVals.length) return null;
+      const avg = windowVals.reduce((a, b) => a + b, 0) / windowVals.length;
+      const delta = lastVal - avg;
+      if (Math.abs(delta) < 1e-9) return { dir: 'up', delta: 0, avg };
+      return { dir: delta > 0 ? 'up' : 'down', delta, avg };
+    }
+
+    function trendHtml(t, decimals) {
+      if (!t) return '<span class="trend trend-flat">—</span>';
+      const arrow = t.dir === 'up' ? '↑' : '↓';
+      const cls = t.dir === 'up' ? 'trend-up' : 'trend-down';
+      const d = (t.delta > 0 ? '+' : '') + Number(t.delta).toFixed(decimals);
+      return '<span class="trend ' + cls + '" title="порівняно із середнім за попередні ~30 хв">' + arrow + ' ' + d + '</span>';
+    }
+
+    function savePrevReadings(map) {
+      // alias kept for call sites — push into history buffer
+      pushHistoryBuf(map);
+    }
+
+    function displayValue(phenomenon, raw) {
+      const meta = METRIC_META[phenomenon] || {};
+      let v = raw;
+      if (meta.transform) v = meta.transform(v);
+      const dec = meta.decimals ?? 1;
+      return typeof v === 'number' ? v.toFixed(dec) : v;
+    }
+
+    function numericValue(phenomenon, raw) {
+      const meta = METRIC_META[phenomenon] || {};
+      let v = raw;
+      if (meta.transform) v = meta.transform(v);
+      return typeof v === 'number' ? v : parseFloat(v);
+    }
+
+    function renderMetrics(lastData, aqi) {
+      const grid = document.getElementById('metrics-grid');
+      const prevMap = {};
+      grid.innerHTML = lastData.map(m => {
+        const meta = METRIC_META[m.phenomenon] || { label: m.phenomenon, unit: '', icon: '📌', color: '#8b9cb3', decimals: 1 };
+        const num = numericValue(m.phenomenon, m.value);
+        prevMap[m.phenomenon] = num;
+        const shown = displayValue(m.phenomenon, m.value);
+        // Prefer series trend (same as charts), else localStorage 30-min avg
+        const t = SERIES_TRENDS[m.phenomenon] || computeTrend(m.phenomenon, num);
+        return '<div class="metric-card" data-key="' + m.phenomenon + '" data-value="' + num + '">' +
+          '<div class="icon" style="background:' + meta.color + '22;color:' + meta.color + '">' + meta.icon + '</div>' +
+          '<div class="label">' + meta.label + '</div>' +
+          '<div class="value-row">' +
+            '<div class="value">' + shown + '<span class="unit">' + meta.unit + '</span></div>' +
+            '<span class="trend-slot">' + trendHtml(t, meta.decimals ?? 1) + '</span>' +
+          '</div>' +
+          '<div class="updated">' + (m.is_old ? '⚠️ Застарілі · ' : '') + formatDate(m.updated_at) + '</div>' +
+          '</div>';
+      }).join('');
+
+      prevMap.aqi = aqi;
+      // Push AFTER reading trends so this sample becomes history for next time
+      setTimeout(() => savePrevReadings(prevMap), 800);
+    }
+
+    function updateUI(data) {
+      const aqi = data.aqi ?? 0;
+      const level = getAqiLevel(aqi);
+      document.getElementById('aqi-value').textContent = aqi;
+      document.getElementById('aqi-value').className = 'aqi-number ' + level.colorCls;
+      document.getElementById('aqi-status').textContent = level.status;
+      document.getElementById('aqi-status').className = 'aqi-status status-' + level.cls;
+      document.getElementById('aqi-title').textContent = level.title;
+      document.getElementById('aqi-desc').textContent = level.desc;
+      const aqiTrend = computeTrend('aqi', aqi);
+      document.getElementById('aqi-trend').innerHTML = trendHtml(aqiTrend, 0);
+      document.getElementById('sensor-name').textContent = data.sensor_name || '—';
+      document.getElementById('location-text').textContent = 'м. ' + data.city_name + ', ' + data.region_name + ', ' + data.country_name;
+      document.getElementById('info-id').textContent = data.id;
+      document.getElementById('info-platform').textContent = data.platform_name || '—';
+      document.getElementById('info-type').textContent = data.type_name || '—';
+      document.getElementById('info-coords').textContent = data.latitude + ', ' + data.longitude;
+      document.getElementById('info-last').textContent = formatDate(data.last_measurement_at);
+      document.getElementById('info-count').textContent = formatNumber(data.measurements_count || 0);
+      document.getElementById('info-created').textContent = formatDate(data.created_at);
+      document.getElementById('info-aqi-updated').textContent = formatDate(data.aqi_updated_at);
+      renderMetrics(data.last_data || [], aqi);
+      document.getElementById('footer-time').textContent = 'Оновлено: ' + new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' });
+    }
+
+    let aqiChart = null;
+    const miniCharts = {};
+
+    function parseAqiHistory(hist) {
+      let items = [];
+      if (Array.isArray(hist)) items = hist.filter(x => x && x[1] !== false && x[1] != null);
+      else if (hist && typeof hist === 'object')
+        items = Object.entries(hist).filter(([, v]) => v !== false && v != null).map(([k, v]) => [k, v]);
+      items.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      return items;
+    }
+
+    function commonChartOptions(yTitle) {
+      return {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1a2332', titleColor: '#e8eef5', bodyColor: '#e8eef5', borderColor: '#2a3a4f', borderWidth: 1, padding: 10 } },
+        scales: {
+          x: {
+            type: 'time',
+            time: {
+              unit: 'hour',
+              tooltipFormat: 'dd.MM.yyyy HH:mm',
+              displayFormats: {
+                hour: 'dd.MM HH:mm',
+                day: 'dd.MM',
+                minute: 'HH:mm'
+              }
+            },
+            grid: { color: 'rgba(42,58,79,0.45)' },
+            ticks: {
+              color: '#8b9cb3',
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 10,
+              font: { size: 11 },
+              callback: function(value) {
+                const d = new Date(value);
+                if (isNaN(d.getTime())) return value;
+                // Force 24h Europe/Kyiv
+                const parts = new Intl.DateTimeFormat('uk-UA', {
+                  timeZone: 'Europe/Kyiv',
+                  day: '2-digit', month: '2-digit',
+                  hour: '2-digit', minute: '2-digit',
+                  hour12: false
+                }).formatToParts(d);
+                const get = (t) => (parts.find(p => p.type === t) || {}).value || '';
+                return get('day') + '.' + get('month') + ' ' + get('hour') + ':' + get('minute');
+              }
+            }
+          },
+          y: { grid: { color: 'rgba(42,58,79,0.45)' }, ticks: { color: '#8b9cb3', font: { size: 10 } }, title: yTitle ? { display: true, text: yTitle, color: '#8b9cb3', font: { size: 11 } } : undefined }
+        }
+      };
+    }
+
+    function renderAqiHistory(items) {
+      if (!items.length) return;
+      const labels = items.map(([ts]) => { const s = String(ts).replace(' ', 'T'); return /[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + '+03:00'; });
+      const values = items.map(([, v]) => v);
+      const min = Math.min(...values), max = Math.max(...values);
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const last = values[values.length - 1];
+      document.getElementById('history-stats').innerHTML =
+        '<div class="hist-stat"><div class="hs-label">Мін</div><div class="hs-value" style="color:' + aqiColor(min) + '">' + min + '</div></div>' +
+        '<div class="hist-stat"><div class="hs-label">Середнє</div><div class="hs-value" style="color:' + aqiColor(avg) + '">' + avg.toFixed(0) + '</div></div>' +
+        '<div class="hist-stat"><div class="hs-label">Макс</div><div class="hs-value" style="color:' + aqiColor(max) + '">' + max + '</div></div>' +
+        '<div class="hist-stat"><div class="hs-label">Зараз</div><div class="hs-value" style="color:' + aqiColor(last) + '">' + last + '</div></div>' +
+        '<div class="hist-stat"><div class="hs-label">Точок</div><div class="hs-value">' + values.length + '</div></div>';
+
+      const seriesTrend = trendFromSeries(items);
+      if (seriesTrend) {
+        SERIES_TRENDS.aqi = seriesTrend;
+        // PM correlates with AQI direction for display when no separate PM series
+        SERIES_TRENDS.pm25 = seriesTrend;
+        SERIES_TRENDS.pm10 = seriesTrend;
+        document.getElementById('aqi-trend').innerHTML = trendHtml(seriesTrend, 0) +
+          ' <span style="color:var(--text-muted);font-weight:500;font-size:0.8rem">vs ~30 хв</span>';
+        applySeriesTrendsToCards();
+      }
+
+      const ctx = document.getElementById('aqi-chart').getContext('2d');
+      if (aqiChart) aqiChart.destroy();
+      const opts = commonChartOptions('AQI');
+      opts.scales.y.beginAtZero = true;
+      opts.scales.y.suggestedMax = Math.max(100, max + 10);
+      opts.plugins.tooltip.callbacks = {
+        title(items) {
+          const raw = items[0].label;
+          const d = new Date(raw); // already has +03:00 from labels
+          return d.toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Kyiv' });
+        },
+        label(ctx) { const v = ctx.parsed.y; return ' AQI: ' + v + ' — ' + getAqiLevel(v).status; }
+      };
+      aqiChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ label: 'AQI', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.12)', borderWidth: 2, fill: true, tension: 0.3, pointRadius: 2.5, pointHoverRadius: 5, pointBackgroundColor: values.map(aqiColor), pointBorderColor: '#0f1419', pointBorderWidth: 1 }] },
+        options: opts
+      });
+    }
+
+    function renderMiniChart(canvasId, series, color, yLabel, trendElId, decimals) {
+      if (!series || !series.length) return;
+      // Sort & dedupe by time
+      const cleaned = series
+        .filter(p => p && p[1] != null && !isNaN(p[1]))
+        .slice()
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+
+      const labels = cleaned.map(([t]) => {
+        let s = String(t);
+        if (s.length === 16) s += ':00';
+        if (!/[Zz]|[+\-]\d{2}:?\d{2}$/.test(s)) s += '+03:00';
+        return s;
+      });
+      const values = cleaned.map(([, v]) => +v);
+      const t = trendFromSeries(cleaned);
+      if (trendElId) document.getElementById(trendElId).innerHTML = trendHtml(t, decimals);
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      if (miniCharts[canvasId]) miniCharts[canvasId].destroy();
+      const opts = commonChartOptions(yLabel);
+      opts.layout = { padding: { top: 8, right: 12, bottom: 0, left: 0 } };
+      opts.clip = false; // avoid cut-off artefacts; scale will fit all points
+
+      const min = Math.min(...values), max = Math.max(...values);
+      const span = Math.max(max - min, 0.5);
+      const pad = Math.max(span * 0.2, 1);
+      // Nice bounds so last point is never glued to the frame
+      opts.scales.y.min = Math.floor((min - pad) * 10) / 10;
+      opts.scales.y.max = Math.ceil((max + pad) * 10) / 10;
+      // time axis: explicit min/max from data so nothing sticks out horizontally
+      const t0 = new Date(labels[0]).getTime();
+      const t1 = new Date(labels[labels.length - 1]).getTime();
+      if (!isNaN(t0) && !isNaN(t1) && t1 >= t0) {
+        const xPad = Math.max((t1 - t0) * 0.02, 5 * 60 * 1000);
+        opts.scales.x.min = t0 - xPad;
+        opts.scales.x.max = t1 + xPad;
+      }
+
+      miniCharts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            borderColor: color,
+            backgroundColor: color + '22',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHitRadius: 8,
+            spanGaps: false
+          }]
+        },
+        options: opts
+      });
+    }
+
+    function renderMeteo(meteo) {
+      renderMiniChart('temp-chart', meteo.temp, '#f97316', '°C', 'trend-temp', 1);
+      renderMiniChart('hum-chart', meteo.humidity, '#22c55e', '%', 'trend-hum', 0);
+      renderMiniChart('press-chart', meteo.pressure_mmhg, '#a855f7', 'мм рт.ст.', 'trend-press', 1);
+
+      // Same trends on metric cards above charts
+      const tTemp = trendFromSeries(meteo.temp);
+      const tHum  = trendFromSeries(meteo.humidity);
+      const tPress = trendFromSeries(meteo.pressure_mmhg);
+      if (tTemp)  SERIES_TRENDS.temperature = tTemp;
+      if (tHum)   SERIES_TRENDS.humidity = tHum;
+      if (tPress) SERIES_TRENDS.pressure_pa = tPress;
+      // HECA mirrors station weather sensors when no separate series
+      if (tTemp)  SERIES_TRENDS.heca_temperature = tTemp;
+      if (tHum)   SERIES_TRENDS.heca_humidity = tHum;
+      applySeriesTrendsToCards();
+    }
+
+    /** Update trend badges already rendered on metric cards */
+    function applySeriesTrendsToCards() {
+      document.querySelectorAll('.metric-card[data-key]').forEach(card => {
+        const key = card.getAttribute('data-key');
+        const t = SERIES_TRENDS[key] || computeTrend(key, parseFloat(card.getAttribute('data-value')));
+        const slot = card.querySelector('.trend-slot');
+        if (!slot) return;
+        const meta = METRIC_META[key] || {};
+        slot.innerHTML = trendHtml(t, meta.decimals ?? 1);
+      });
+    }
+
+    /** Current instant in Europe/Kyiv as Date */
+    function nowKyiv() {
+      // Build a Date that reflects Kyiv wall-clock by formatting then parsing with +03:00
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+      }).formatToParts(new Date());
+      const g = t => (parts.find(p => p.type === t) || {}).value;
+      return new Date(g('year') + '-' + g('month') + '-' + g('day') + 'T' + g('hour') + ':' + g('minute') + ':' + g('second') + '+03:00');
+    }
+
+    function meteoFromApi(data) {
+      const h = data.hourly;
+      if (!h || !h.time) return { temp: [], humidity: [], pressure_mmhg: [] };
+
+      const now = nowKyiv();
+      // Window: last 48 hours up to current hour (include current hour, exclude far future)
+      const endMs = now.getTime() + 30 * 60 * 1000; // allow ~30 min past the hour
+      const startMs = now.getTime() - 48 * 3600 * 1000;
+
+      const out = { temp: [], humidity: [], pressure_mmhg: [] };
+      for (let i = 0; i < h.time.length; i++) {
+        const t = h.time[i]; // already Kyiv local from API timezone=Europe/Kyiv
+        const ts = parseKyiv(t.length === 16 ? t + ':00' : t);
+        if (!ts) continue;
+        const ms = ts.getTime();
+        if (ms < startMs || ms > endMs) continue;
+        if (h.temperature_2m[i] == null) continue;
+        out.temp.push([t, h.temperature_2m[i]]);
+        out.humidity.push([t, h.relative_humidity_2m[i]]);
+        out.pressure_mmhg.push([t, Math.round(HPA_TO_MMHG(h.surface_pressure[i]) * 10) / 10]);
+      }
+      return out;
+    }
+
+    /** Append/replace last chart point with live station reading so series ends at real measurement time */
+    function mergeStationIntoMeteo(meteo, stationData) {
+      if (!meteo || !stationData || !stationData.last_data) return meteo;
+      const map = {};
+      stationData.last_data.forEach(m => { map[m.phenomenon] = m; });
+      const upd = (map.temperature && map.temperature.updated_at) || stationData.last_measurement_at;
+      if (!upd) return meteo;
+
+      // Build local timestamp label YYYY-MM-DDTHH:mm
+      const d = parseKyiv(upd);
+      if (!d) return meteo;
+      const pad = n => String(n).padStart(2, '0');
+      // format in Kyiv
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false
+      }).formatToParts(d);
+      const g = t => (parts.find(p => p.type === t) || {}).value;
+      const label = g('year') + '-' + g('month') + '-' + g('day') + 'T' + g('hour') + ':' + g('minute');
+
+      function upsert(series, value) {
+        if (value == null || isNaN(value)) return series;
+        const s = (series || []).slice();
+        const stationMs = d.getTime();
+
+        // Drop points after the station measurement (future forecast hours)
+        const filtered = s.filter(([t]) => {
+          const ts = parseKyiv(t.length <= 16 ? t + ':00' : t);
+          return ts && ts.getTime() <= stationMs + 60 * 1000;
+        });
+
+        // Replace point in the same hour, or append
+        const hourKey = label.slice(0, 13); // YYYY-MM-DDTHH
+        let replaced = false;
+        for (let i = 0; i < filtered.length; i++) {
+          if (String(filtered[i][0]).slice(0, 13) === hourKey) {
+            filtered[i] = [label, value];
+            replaced = true;
+            break;
+          }
+        }
+        if (!replaced) filtered.push([label, value]);
+
+        // Sort by time ascending
+        filtered.sort((a, b) => {
+          const ta = parseKyiv(String(a[0]).length <= 16 ? a[0] + ':00' : a[0]);
+          const tb = parseKyiv(String(b[0]).length <= 16 ? b[0] + ':00' : b[0]);
+          return (ta ? ta.getTime() : 0) - (tb ? tb.getTime() : 0);
+        });
+        return filtered;
+      }
+
+      if (map.temperature) meteo.temp = upsert(meteo.temp, +(+map.temperature.value).toFixed(1));
+      if (map.humidity) meteo.humidity = upsert(meteo.humidity, +(+map.humidity.value).toFixed(1));
+      if (map.pressure_pa) meteo.pressure_mmhg = upsert(meteo.pressure_mmhg, +PA_TO_MMHG(map.pressure_pa.value).toFixed(1));
+      return meteo;
+    }
+
+    async function loadStation() {
+      try {
+        const res = await fetch(STATION_URL + '?t=' + Date.now());
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        LAST_STATION = await res.json();
+        updateUI(LAST_STATION);
+      } catch (e) { console.warn(e); LAST_STATION = INITIAL_DATA; updateUI(INITIAL_DATA); }
+    }
+
+    async function loadAqiHistory() {
+      try {
+        const res = await fetch(HISTORY_AQI_URL + '?t=' + Date.now());
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const items = parseAqiHistory((await res.json()).history);
+        if (items.length) { renderAqiHistory(items); return; }
+      } catch (e) { console.warn(e); }
+      renderAqiHistory(HISTORY_AQI_SNAP);
+    }
+
+    let LAST_STATION = INITIAL_DATA;
+
+    async function loadMeteo() {
+      let meteo = null;
+      try {
+        const res = await fetch(METEO_URL + '&t=' + Date.now());
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (data.error) throw new Error(data.reason || 'meteo error');
+        meteo = meteoFromApi(data);
+      } catch (e) {
+        console.warn('Meteo API:', e);
+        // Fallback snapshot, still clipped to last 48h relative to now
+        meteo = { temp: METEO_SNAP.temp.slice(), humidity: METEO_SNAP.humidity.slice(), pressure_mmhg: METEO_SNAP.pressure_mmhg.slice() };
+        const startMs = nowKyiv().getTime() - 48 * 3600 * 1000;
+        const endMs = nowKyiv().getTime() + 30 * 60 * 1000;
+        const clip = arr => arr.filter(([t]) => {
+          const ts = parseKyiv(t.length <= 16 ? t + ':00' : t);
+          return ts && ts.getTime() >= startMs && ts.getTime() <= endMs;
+        });
+        meteo.temp = clip(meteo.temp);
+        meteo.humidity = clip(meteo.humidity);
+        meteo.pressure_mmhg = clip(meteo.pressure_mmhg);
+      }
+      meteo = mergeStationIntoMeteo(meteo, LAST_STATION);
+      renderMeteo(meteo);
+    }
+
+    async function refreshAll() {
+      const btn = document.getElementById('refresh-btn');
+      const loading = document.getElementById('loading');
+      btn.classList.add('loading'); loading.classList.add('active');
+      try {
+        await loadStation(); // first — so meteo can append live point
+        await Promise.all([loadAqiHistory(), loadMeteo()]);
+      } finally { btn.classList.remove('loading'); loading.classList.remove('active'); }
+    }
+
+    updateUI(INITIAL_DATA);
+    renderAqiHistory(HISTORY_AQI_SNAP);
+    renderMeteo(mergeStationIntoMeteo({
+      temp: METEO_SNAP.temp.slice(),
+      humidity: METEO_SNAP.humidity.slice(),
+      pressure_mmhg: METEO_SNAP.pressure_mmhg.slice()
+    }, INITIAL_DATA));
+    refreshAll();
+  </script>
+</body>
+</html>
