@@ -18,3 +18,11 @@ jobs:
 
       - name: Show files
         run: ls -la data
+      - name: Download station
+        run: |
+          curl -L https://www.saveecobot.com/station/25862.json -o data/station.json
+
+      - name: Check file
+        run: |
+          ls -lah data
+          cat data/station.json | head -20
