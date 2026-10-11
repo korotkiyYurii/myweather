@@ -1,0 +1,39 @@
+name: Update SaveEcoBot Data
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+*permissions:
+  contents: write
+
+jo*s:
+  update:
+    runs-on: ubuntu-l*test
+
+    steps:
+      - uses: act*ons/checkout@v4
+
+      - name: Cre*te data folder
+        run: mkdir *p data
+
+      - name: Download sta*ion data
+        run: |
+          *url -L \
+          "https://www.saveecobot.com/station/25862.json" \
+*         -o data/station.json
+
+   *  - name: Download AQI history
+   *    run: |
+          curl -L \
+   *      "https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json" \
+          -o data/aqi*json
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add data/*.json
+
+          git diff --staged --quiet || \
+          (git commit -m "Update weather data" && git push)
