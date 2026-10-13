@@ -473,7 +473,7 @@
       document.getElementById('info-created').textContent = formatDate(data.created_at);
       document.getElementById('info-aqi-updated').textContent = formatDate(data.aqi_updated_at);
       renderMetrics(data.last_data || [], aqi);
-      document.getElementById('footer-time').textContent = 'Оновлено: ' + new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' });
+      document.getElementById('footer-time').textContent = 'Останнє вимірювання: ' + formatDate(data.last_measurement_at);
     }
 
     let aqiChart = null;
