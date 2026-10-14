@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Погода в домі</title>
-  <script type="text/javascript" nonce="0e1bde65ab4c4aef90986e747d5" src="//injections.adguard.org?ts=1791659579401&amp;type=content-script&amp;dmn=storage.googleapis.com&amp;url=https%3A%2F%2Fstorage.googleapis.com%2Fgrok-terminal-artifacts-prod%2F67ddbaa6-70a6-4577-ba32-d0cd57fceb50%2Fea9745c6-4aa8-4bae-92ff-b79fcb2174df%2Fartifacts%2Fweather_dashboard.html%3FX-Goog-Algorithm%3DGOOG4-RSA-SHA256%26X-Goog-Credential%3Dgrok-backend-production%2540enterprise-api-425510.iam.gserviceaccount.com%252F20261010%252Fauto%252Fstorage%252Fgoog4_request%26X-Goog-Date%3D20261010T193846Z%26X-Goog-Expires%3D3600%26X-Goog-SignedHeaders%3Dhost%26response-content-disposition%3Dattachment%253B%2Bfilename%253D%2522weather_dashboard.html%2522%26X-Goog-Signature%3D5cf14f6e213e4c2aecbedb696fe3069063fc90ac94d03e89e66e8065fe2d827fca0f1834d573dec4865360d7e77bc66c4ba07d2750fd8fd1b47a5a85f496c582c67d02a8321ff054491783bdbeb82baf78003d49b830c5df61da99b12785783a0a75f1a409069ccd5b99acfc39caf8be014b73b15ff11314fe21424f6fbed306abdc480243e20c7cb6658cb3e075c2f45ea1396e2b57af779436a163bb08256a5e691bb6ec6ebbfa9acf378b3e6e4ddc8dfe7c4b7e79684f03017778c1651877ebd749117d63e02b9b1f0a050df59c57a9b46b06d57343dddaf36ab0aafbae29f85c74778bcb68d91558dc7d29eb11e0b8165e15cf1991699b61f1da529b9207&amp;app=chrome.exe&amp;css=3&amp;js=1&amp;rel=1&amp;rji=1&amp;sbe=1&amp;stealth=1&amp;st-dnt"></script><script type="text/javascript" nonce="0e1bde65ab4c4aef90986e747d5" src="//injections.adguard.org?ts=1791659579401&amp;name=AdGuard%20Extra&amp;name=AdGuard%20Popup%20Blocker&amp;type=user-script"></script><link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -225,7 +225,10 @@
   <script>
     const STATION_URL = './data/station.json';
     const HISTORY_AQI_URL = './data/aqi.json';
+    const METEO_LOCAL = './data/meteo.json';
     const METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe/Kyiv&forecast_days=1';
+    const STATION_LIVE = 'https://www.saveecobot.com/station/25862.json';
+    const AQI_LIVE = 'https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json';
     const LS_KEY = 'seb_station_25862_prev';
     // Trends derived from chart series (preferred over localStorage buffer)
     const SERIES_TRENDS = {}; // key -> { dir, delta, avg }
@@ -249,8 +252,8 @@
       temperature: { label: 'Температура', unit: '°C', icon: '🌡️', color: '#f97316', decimals: 1 },
       humidity: { label: 'Вологість', unit: '%', icon: '💧', color: '#22c55e', decimals: 1 },
       pressure_pa: { label: 'Тиск', unit: 'мм рт.ст.', icon: '📊', color: '#a855f7', decimals: 1, transform: PA_TO_MMHG },
-      heca_temperature: { label: 'Темп. (HECA)', unit: '°C', icon: '🌡️', color: '#fb923c', decimals: 1 },
-      heca_humidity: { label: 'Вологість (HECA)', unit: '%', icon: '💧', color: '#4ade80', decimals: 1 },
+      heca_temperature: { label: 'Темп. HECA', unit: '°C', icon: '🌡️', color: '#fb923c', decimals: 1, hint: 'Температура всередині корпусу сенсора (HECA) — для контролю мікроклімату приладу, не зовнішня погода' },
+      heca_humidity: { label: 'Вологість HECA', unit: '%', icon: '💧', color: '#4ade80', decimals: 1, hint: 'Вологість всередині корпусу сенсора (HECA) — службовий показник приладу' },
     };
 
     const INITIAL_DATA = {"id":25862,"longitude":"28.617254","latitude":"50.278178","city_name":"Житомир","region_name":"Житомирська область","country_name":"Україна","sensor_name":"вулиця Героїв Десантників, 25","type_name":"Станція моніторингу якості повітря","platform_name":"SaveDnipro","aqi":62,"aqi_updated_at":"2026-10-10 22:00:00","created_at":"2026-01-08 12:14:54","last_measurement_at":"2026-10-10 22:12:54","measurements_count":90632,"last_data":[{"phenomenon":"pm25","value":18,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"pm10","value":29.8,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"temperature","value":13.73,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"humidity","value":61.48,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"pressure_pa","value":990599.8,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"heca_temperature","value":15.75,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"heca_humidity","value":60.29,"updated_at":"2026-10-10 22:20:10","is_old":false}]};
@@ -434,7 +437,7 @@
         const t = SERIES_TRENDS[m.phenomenon] || computeTrend(m.phenomenon, num);
         return '<div class="metric-card" data-key="' + m.phenomenon + '" data-value="' + num + '">' +
           '<div class="icon" style="background:' + meta.color + '22;color:' + meta.color + '">' + meta.icon + '</div>' +
-          '<div class="label">' + meta.label + '</div>' +
+          '<div class="label"' + (meta.hint ? ' title="' + meta.hint.replace(/"/g, '&quot;') + '"' : '') + '>' + meta.label + (meta.hint ? ' <span style="opacity:.6;font-size:.7em;normal-case;letter-spacing:0">ⓘ</span>' : '') + '</div>' +
           '<div class="value-row">' +
             '<div class="value">' + shown + '<span class="unit">' + meta.unit + '</span></div>' +
             '<span class="trend-slot">' + trendHtml(t, meta.decimals ?? 1) + '</span>' +
@@ -761,20 +764,32 @@
       return meteo;
     }
 
+    async function loadJson(primary, fallback) {
+      const urls = [primary, fallback].filter(Boolean);
+      let lastErr;
+      for (const url of urls) {
+        try {
+          const res = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const data = await res.json();
+          if (data && data.error) throw new Error(data.reason || 'error');
+          return data;
+        } catch (e) { lastErr = e; console.warn('load failed', url, e); }
+      }
+      throw lastErr || new Error('no data');
+    }
+
     async function loadStation() {
       try {
-        const res = await fetch(STATION_URL + '?t=' + Date.now());
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        LAST_STATION = await res.json();
+        LAST_STATION = await loadJson(STATION_URL, typeof STATION_LIVE !== 'undefined' ? STATION_LIVE : null);
         updateUI(LAST_STATION);
       } catch (e) { console.warn(e); LAST_STATION = INITIAL_DATA; updateUI(INITIAL_DATA); }
     }
 
     async function loadAqiHistory() {
       try {
-        const res = await fetch(HISTORY_AQI_URL + '?t=' + Date.now());
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const items = parseAqiHistory((await res.json()).history);
+        const data = await loadJson(HISTORY_AQI_URL, typeof AQI_LIVE !== 'undefined' ? AQI_LIVE : null);
+        const items = parseAqiHistory(data.history);
         if (items.length) { renderAqiHistory(items); return; }
       } catch (e) { console.warn(e); }
       renderAqiHistory(HISTORY_AQI_SNAP);
@@ -785,14 +800,23 @@
     async function loadMeteo() {
       let meteo = null;
       try {
-        const res = await fetch(METEO_URL + '&t=' + Date.now());
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        if (data.error) throw new Error(data.reason || 'meteo error');
-        meteo = meteoFromApi(data);
+        let data;
+        try {
+          data = await loadJson(METEO_LOCAL, METEO_URL);
+        } catch (e1) {
+          const res = await fetch(METEO_URL + '&t=' + Date.now(), { cache: 'no-store' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          data = await res.json();
+          if (data.error) throw new Error(data.reason || 'meteo error');
+        }
+        // local file may already be processed series OR raw open-meteo
+        if (data.temp && data.humidity) {
+          meteo = data;
+        } else {
+          meteo = meteoFromApi(data);
+        }
       } catch (e) {
         console.warn('Meteo API:', e);
-        // Fallback snapshot, still clipped to last 48h relative to now
         meteo = { temp: METEO_SNAP.temp.slice(), humidity: METEO_SNAP.humidity.slice(), pressure_mmhg: METEO_SNAP.pressure_mmhg.slice() };
         const startMs = nowKyiv().getTime() - 48 * 3600 * 1000;
         const endMs = nowKyiv().getTime() + 30 * 60 * 1000;
