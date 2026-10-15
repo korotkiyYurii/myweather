@@ -778,31 +778,34 @@
           const data = await res.json();
           if (data && data.error) throw new Error(data.reason || 'error');
           return data;
-        } catch (e) { lastErr = e; console.warn('load failed', url, e); }
+        } catch (e) {
+          lastErr = e;
+          // Не спамимо консоль CORS-помилками для saveecobot
+          if (!String(url).includes('saveecobot.com')) console.warn('load failed', url, e);
+        }
       }
       throw lastErr || new Error('no data');
     }
 
     async function loadStation() {
       try {
-        // Live first (актуальні дані), local GitHub cache — запасний варіант
-        LAST_STATION = await loadJson(
-          typeof STATION_LIVE !== 'undefined' ? STATION_LIVE : STATION_URL,
-          STATION_URL
-        );
+        // Тільки локальний файл (GitHub Actions) — SaveEcoBot блокує CORS з браузера
+        LAST_STATION = await loadJson(STATION_URL, null);
         updateUI(LAST_STATION);
-      } catch (e) { console.warn(e); LAST_STATION = INITIAL_DATA; updateUI(INITIAL_DATA); }
+      } catch (e) {
+        console.warn('station local failed, using snapshot', e);
+        LAST_STATION = INITIAL_DATA;
+        updateUI(INITIAL_DATA);
+      }
     }
 
     async function loadAqiHistory() {
       try {
-        const data = await loadJson(
-          typeof AQI_LIVE !== 'undefined' ? AQI_LIVE : HISTORY_AQI_URL,
-          HISTORY_AQI_URL
-        );
+        // Тільки локальний aqi.json — live SaveEcoBot дає CORS 403 з GitHub Pages
+        const data = await loadJson(HISTORY_AQI_URL, null);
         const items = parseAqiHistory(data.history);
         if (items.length) { renderAqiHistory(items); return; }
-      } catch (e) { console.warn(e); }
+      } catch (e) { console.warn('aqi local failed', e); }
       renderAqiHistory(HISTORY_AQI_SNAP);
     }
 
