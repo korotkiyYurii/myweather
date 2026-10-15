@@ -247,8 +247,10 @@
     ];
 
     const METRIC_META = {
-      pm25: { label: 'PM2.5', unit: 'µg/m³', icon: '🌫️', color: '#3b82f6', decimals: 1 },
-      pm10: { label: 'PM10', unit: 'µg/m³', icon: '💨', color: '#06b6d4', decimals: 1 },
+      pm25: { label: 'PM2.5', unit: 'µg/m³', icon: '🌫️', color: '#3b82f6', decimals: 1,
+        hint: 'Дрібнодисперсний пил розміром до 2,5 мкм. Проникає глибоко в легені та кров. Основне джерело розрахунку AQI. Норма (добре): до ~12 µg/m³' },
+      pm10: { label: 'PM10', unit: 'µg/m³', icon: '💨', color: '#06b6d4', decimals: 1,
+        hint: 'Частинки пилу розміром до 10 мкм (пил, пилок, сажа). Затримуються у верхніх дихальних шляхах. Норма (добре): до ~54 µg/m³' },
       temperature: { label: 'Температура', unit: '°C', icon: '🌡️', color: '#f97316', decimals: 1 },
       humidity: { label: 'Вологість', unit: '%', icon: '💧', color: '#22c55e', decimals: 1 },
       pressure_pa: { label: 'Тиск', unit: 'мм рт.ст.', icon: '📊', color: '#a855f7', decimals: 1, transform: PA_TO_MMHG },
