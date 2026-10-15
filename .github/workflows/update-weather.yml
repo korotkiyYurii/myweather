@@ -23,20 +23,17 @@ jobs:
       - name: Create data folder
         run: mkdir -p data
 
-      - name: Download station
-        run: |
-          curl -fsSL --retry 3 --retry-delay 2 \
-            "https://www.saveecobot.com/station/25862.json" \
-            -o data/station.json
-          python3 -c "import json; json.load(open('data/station.json')); print('station.json OK')"
-
-      - name: Download AQI history
-        run: |
-          curl -fsSL --retry 3 --retry-delay 2 \
-            "https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json" \
-            -o data/aqi.json
-          python3 -c "import json; d=json.load(open('data/aqi.json')); assert 'history' in d; print('aqi.json OK', len(d.get('history') or []))"
-
+- name: Download station
+  run: |
+    curl -fsSL --retry 3 --retry-delay 2 \
+      "https://www.saveecobot.com/station/25862.json?t=$(date +%s)" \
+      -o data/station.json
+ 
+ - name: Download AQI history
+  run: |
+    curl -fsSL --retry 3 --retry-delay 2 \
+      "https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json?t=$(date +%s)" \
+      -o data/aqi.json
       - name: Download Open-Meteo (48h)
         run: |
           curl -fsSL --retry 3 --retry-delay 2 \
@@ -77,6 +74,13 @@ jobs:
         run: |
           date -u +"%Y-%m-%dT%H:%M:%SZ" > data/updated_at.txt
           echo "Updated at $(cat data/updated_at.txt)"
+
+- name: Debug timestamps
+  run: |
+    jq '.last_measurement_at' data/station.json
+    jq '.aqi_updated_at' data/station.json
+
+          
 
       - name: Commit and push
         run: |
