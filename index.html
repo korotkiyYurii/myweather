@@ -252,8 +252,6 @@
       temperature: { label: 'Температура', unit: '°C', icon: '🌡️', color: '#f97316', decimals: 1 },
       humidity: { label: 'Вологість', unit: '%', icon: '💧', color: '#22c55e', decimals: 1 },
       pressure_pa: { label: 'Тиск', unit: 'мм рт.ст.', icon: '📊', color: '#a855f7', decimals: 1, transform: PA_TO_MMHG },
-      heca_temperature: { label: 'Темп. HECA', unit: '°C', icon: '🌡️', color: '#fb923c', decimals: 1, hint: 'Температура всередині корпусу сенсора (HECA) — для контролю мікроклімату приладу, не зовнішня погода' },
-      heca_humidity: { label: 'Вологість HECA', unit: '%', icon: '💧', color: '#4ade80', decimals: 1, hint: 'Вологість всередині корпусу сенсора (HECA) — службовий показник приладу' },
     };
 
     const INITIAL_DATA = {"id":25862,"longitude":"28.617254","latitude":"50.278178","city_name":"Житомир","region_name":"Житомирська область","country_name":"Україна","sensor_name":"вулиця Героїв Десантників, 25","type_name":"Станція моніторингу якості повітря","platform_name":"SaveDnipro","aqi":62,"aqi_updated_at":"2026-10-10 22:00:00","created_at":"2026-01-08 12:14:54","last_measurement_at":"2026-10-10 22:12:54","measurements_count":90632,"last_data":[{"phenomenon":"pm25","value":18,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"pm10","value":29.8,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"temperature","value":13.73,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"humidity","value":61.48,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"pressure_pa","value":990599.8,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"heca_temperature","value":15.75,"updated_at":"2026-10-10 22:20:10","is_old":false},{"phenomenon":"heca_humidity","value":60.29,"updated_at":"2026-10-10 22:20:10","is_old":false}]};
@@ -428,7 +426,8 @@
     function renderMetrics(lastData, aqi) {
       const grid = document.getElementById('metrics-grid');
       const prevMap = {};
-      grid.innerHTML = lastData.map(m => {
+      const HIDDEN = new Set(['heca_temperature', 'heca_humidity']);
+      grid.innerHTML = lastData.filter(m => !HIDDEN.has(m.phenomenon)).map(m => {
         const meta = METRIC_META[m.phenomenon] || { label: m.phenomenon, unit: '', icon: '📌', color: '#8b9cb3', decimals: 1 };
         const num = numericValue(m.phenomenon, m.value);
         prevMap[m.phenomenon] = num;
@@ -656,9 +655,6 @@
       if (tTemp)  SERIES_TRENDS.temperature = tTemp;
       if (tHum)   SERIES_TRENDS.humidity = tHum;
       if (tPress) SERIES_TRENDS.pressure_pa = tPress;
-      // HECA mirrors station weather sensors when no separate series
-      if (tTemp)  SERIES_TRENDS.heca_temperature = tTemp;
-      if (tHum)   SERIES_TRENDS.heca_humidity = tHum;
       applySeriesTrendsToCards();
     }
 
@@ -787,14 +783,21 @@
 
     async function loadStation() {
       try {
-        LAST_STATION = await loadJson(STATION_URL, typeof STATION_LIVE !== 'undefined' ? STATION_LIVE : null);
+        // Live first (актуальні дані), local GitHub cache — запасний варіант
+        LAST_STATION = await loadJson(
+          typeof STATION_LIVE !== 'undefined' ? STATION_LIVE : STATION_URL,
+          STATION_URL
+        );
         updateUI(LAST_STATION);
       } catch (e) { console.warn(e); LAST_STATION = INITIAL_DATA; updateUI(INITIAL_DATA); }
     }
 
     async function loadAqiHistory() {
       try {
-        const data = await loadJson(HISTORY_AQI_URL, typeof AQI_LIVE !== 'undefined' ? AQI_LIVE : null);
+        const data = await loadJson(
+          typeof AQI_LIVE !== 'undefined' ? AQI_LIVE : HISTORY_AQI_URL,
+          HISTORY_AQI_URL
+        );
         const items = parseAqiHistory(data.history);
         if (items.length) { renderAqiHistory(items); return; }
       } catch (e) { console.warn(e); }
@@ -808,9 +811,10 @@
       try {
         let data;
         try {
-          data = await loadJson(METEO_LOCAL, METEO_URL);
+          // Live Open-Meteo first, then local cache from Actions
+          data = await loadJson(METEO_URL, METEO_LOCAL);
         } catch (e1) {
-          const res = await fetch(METEO_URL + '&t=' + Date.now(), { cache: 'no-store' });
+          const res = await fetch(METEO_URL + (METEO_URL.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store' });
           if (!res.ok) throw new Error('HTTP ' + res.status);
           data = await res.json();
           if (data.error) throw new Error(data.reason || 'meteo error');
@@ -856,6 +860,18 @@
       pressure_mmhg: METEO_SNAP.pressure_mmhg.slice()
     }, INITIAL_DATA));
     refreshAll();
+
+    // Автооновлення кожні 5 хв (live API), поки вкладка відкрита
+    const AUTO_REFRESH_MS = 5 * 60 * 1000;
+    setInterval(() => {
+      if (document.hidden) return; // не смикати API у фоні
+      refreshAll();
+    }, AUTO_REFRESH_MS);
+
+    // Оновити одразу, коли користувач повертається на вкладку
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshAll();
+    });
   </script>
 </body>
 </html>
