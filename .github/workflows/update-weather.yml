@@ -28,25 +28,11 @@ jobs:
             "https://www.saveecobot.com/station/25862.json?t=$(date +%s)" \
             -o data/station.json
 
-          python3 -c "
-import json
-d=json.load(open('data/station.json'))
-print('last_measurement_at:', d.get('last_measurement_at'))
-print('aqi_updated_at:', d.get('aqi_updated_at'))
-"
-
       - name: Download AQI history
         run: |
           curl -fsSL --retry 3 --retry-delay 2 \
             "https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json?t=$(date +%s)" \
             -o data/aqi.json
-
-          python3 -c "
-import json
-d=json.load(open('data/aqi.json'))
-print('source_updated_at:', d.get('_snapshot_meta',{}).get('source_updated_at'))
-print('history points:', len(d.get('history',{})))
-"
 
       - name: Download Open-Meteo (48h)
         run: |
@@ -103,8 +89,6 @@ print('history points:', len(d.get('history',{})))
               ensure_ascii=False,
               separators=(",", ":")
           )
-
-          print("meteo.json points:", len(out["temp"]))
           PY
 
           rm -f data/meteo_raw.json
@@ -112,27 +96,25 @@ print('history points:', len(d.get('history',{})))
       - name: Debug timestamps
         run: |
           echo "=== station.json ==="
-          jq '.last_measurement_at' data/station.json
-          jq '.aqi_updated_at' data/station.json
+          jq -r '.last_measurement_at' data/station.json
+          jq -r '.aqi_updated_at' data/station.json
 
           echo "=== aqi.json ==="
-          jq '._snapshot_meta.source_updated_at' data/aqi.json
+          jq -r '._snapshot_meta.source_updated_at' data/aqi.json
 
       - name: Stamp update time
         run: |
           date -u +"%Y-%m-%dT%H:%M:%SZ" > data/updated_at.txt
-          echo "Updated at $(cat data/updated_at.txt)"
 
       - name: Commit and push
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git add \
-            data/station.json \
-            data/aqi.json \
-            data/meteo.json \
-            data/updated_at.txt
+          git add data/station.json
+          git add data/aqi.json
+          git add data/meteo.json
+          git add data/updated_at.txt
 
           if git diff --staged --quiet; then
             echo "No data changes"
