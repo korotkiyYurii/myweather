@@ -45,6 +45,13 @@
     }
     .refresh-btn:hover { background: var(--card-hover); border-color: var(--accent); }
     .refresh-btn.loading svg { animation: spin 0.8s linear infinite; }
+    .data-source-badge {
+      display: inline-block; margin-top: 10px; padding: 4px 10px; border-radius: 8px;
+      font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em;
+      background: rgba(139,156,179,0.15); color: var(--text-muted);
+    }
+    .data-source-badge.src-live { background: rgba(34,197,94,0.18); color: #4ade80; }
+    .data-source-badge.src-cache { background: rgba(234,179,8,0.15); color: #facc15; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .aqi-hero {
       background: linear-gradient(135deg, #1e3a5f 0%, #1a2332 100%);
@@ -147,6 +154,7 @@
           </svg>
           <span id="location-text">м. Житомир, Житомирська область, Україна</span>
         </div>
+        <div class="data-source-badge src-cache" id="data-source-badge">○ Завантаження…</div>
       </div>
       <button class="refresh-btn" id="refresh-btn" onclick="refreshAll()">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -227,9 +235,15 @@
     const HISTORY_AQI_URL = './data/aqi.json';
     const METEO_LOCAL = './data/meteo.json';
     const METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe/Kyiv&forecast_days=1';
+    // SaveEcoBot блокує CORS з браузера — беремо через публічні проксі, далі локальний кеш Actions
     const STATION_LIVE = 'https://www.saveecobot.com/station/25862.json';
     const AQI_LIVE = 'https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json';
+    const CORS_PROXIES = [
+      (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+      (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
+    ];
     const LS_KEY = 'seb_station_25862_prev';
+    let DATA_SOURCE = '—'; // для індикатора свіжості
     // Trends derived from chart series (preferred over localStorage buffer)
     const SERIES_TRENDS = {}; // key -> { dir, delta, avg }
 
@@ -768,44 +782,85 @@
       return meteo;
     }
 
+    async function fetchJsonUrl(url, timeoutMs) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs || 8000);
+      try {
+        const res = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (data && data.error) throw new Error(data.reason || 'error');
+        return data;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    /** SaveEcoBot live через CORS-проксі, інакше локальний файл з Actions */
+    async function loadSaveEcoBot(liveUrl, localUrl) {
+      // 1) CORS proxies → live SaveEcoBot
+      for (const make of CORS_PROXIES) {
+        try {
+          const data = await fetchJsonUrl(make(liveUrl + '?t=' + Date.now()), 7000);
+          if (data) return { data, source: 'live' };
+        } catch (e) { /* next proxy */ }
+      }
+      // 2) Локальний кеш GitHub Pages (оновлює Actions)
+      try {
+        const data = await fetchJsonUrl(localUrl + '?t=' + Date.now(), 5000);
+        if (data) return { data, source: 'cache' };
+      } catch (e) { /* fall through */ }
+      return null;
+    }
+
     async function loadJson(primary, fallback) {
       const urls = [primary, fallback].filter(Boolean);
       let lastErr;
       for (const url of urls) {
         try {
-          const res = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store' });
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          const data = await res.json();
-          if (data && data.error) throw new Error(data.reason || 'error');
-          return data;
+          return await fetchJsonUrl(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), 10000);
         } catch (e) {
           lastErr = e;
-          // Не спамимо консоль CORS-помилками для saveecobot
           if (!String(url).includes('saveecobot.com')) console.warn('load failed', url, e);
         }
       }
       throw lastErr || new Error('no data');
     }
 
+    function setDataSourceBadge(source, station) {
+      DATA_SOURCE = source;
+      const el = document.getElementById('data-source-badge');
+      if (!el) return;
+      const when = station && (station.last_measurement_at || station.aqi_updated_at);
+      let text = source === 'live' ? '● Live' : (source === 'cache' ? '○ Кеш Actions' : '○ Snapshot');
+      if (when) text += ' · вимір. ' + formatDate(when);
+      el.textContent = text;
+      el.className = 'data-source-badge ' + (source === 'live' ? 'src-live' : 'src-cache');
+    }
+
     async function loadStation() {
       try {
-        // Тільки локальний файл (GitHub Actions) — SaveEcoBot блокує CORS з браузера
-        LAST_STATION = await loadJson(STATION_URL, null);
-        updateUI(LAST_STATION);
-      } catch (e) {
-        console.warn('station local failed, using snapshot', e);
-        LAST_STATION = INITIAL_DATA;
-        updateUI(INITIAL_DATA);
-      }
+        const res = await loadSaveEcoBot(STATION_LIVE, STATION_URL);
+        if (res) {
+          LAST_STATION = res.data;
+          setDataSourceBadge(res.source, res.data);
+          updateUI(LAST_STATION);
+          return;
+        }
+      } catch (e) { console.warn(e); }
+      LAST_STATION = INITIAL_DATA;
+      setDataSourceBadge('snapshot', INITIAL_DATA);
+      updateUI(INITIAL_DATA);
     }
 
     async function loadAqiHistory() {
       try {
-        // Тільки локальний aqi.json — live SaveEcoBot дає CORS 403 з GitHub Pages
-        const data = await loadJson(HISTORY_AQI_URL, null);
-        const items = parseAqiHistory(data.history);
-        if (items.length) { renderAqiHistory(items); return; }
-      } catch (e) { console.warn('aqi local failed', e); }
+        const res = await loadSaveEcoBot(AQI_LIVE, HISTORY_AQI_URL);
+        if (res) {
+          const items = parseAqiHistory(res.data.history);
+          if (items.length) { renderAqiHistory(items); return; }
+        }
+      } catch (e) { console.warn('aqi failed', e); }
       renderAqiHistory(HISTORY_AQI_SNAP);
     }
 
@@ -867,7 +922,7 @@
     refreshAll();
 
     // Автооновлення кожні 5 хв (live API), поки вкладка відкрита
-    const AUTO_REFRESH_MS = 5 * 60 * 1000;
+    const AUTO_REFRESH_MS = 3 * 60 * 1000; // live через проксі
     setInterval(() => {
       if (document.hidden) return; // не смикати API у фоні
       refreshAll();
