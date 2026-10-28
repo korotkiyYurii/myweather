@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="uk">
 <head>
@@ -239,10 +238,7 @@
     // SaveEcoBot блокує CORS з браузера — беремо через публічні проксі, далі локальний кеш Actions
     const STATION_LIVE = 'https://www.saveecobot.com/station/25862.json';
     const AQI_LIVE = 'https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json';
-    const CORS_PROXIES = [
-      (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
-      (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
-    ];
+    const CORS_PROXIES = []; // публічні проксі не працюють з SaveEcoBot
     const LS_KEY = 'seb_station_25862_prev';
     let DATA_SOURCE = '—'; // для індикатора свіжості
     // Trends derived from chart series (preferred over localStorage buffer)
@@ -833,18 +829,27 @@
       DATA_SOURCE = source;
       const el = document.getElementById('data-source-badge');
       if (!el) return;
-      const when = station && (station.last_measurement_at || station.aqi_updated_at);
+      const measured = station && (station.last_measurement_at || station.aqi_updated_at);
+      const fetched = station && station._fetched_at;
       let text = source === 'live' ? '● Live' : (source === 'cache' ? '○ Кеш Actions' : '○ Snapshot');
-      if (when) text += ' · вимір. ' + formatDate(when);
+      if (measured) text += ' · вимір. ' + formatDate(measured);
+      if (fetched) text += ' · оновл. ' + formatDate(String(fetched).replace('T', ' ').replace('Z', ''));
       el.textContent = text;
+      el.title = 'Дані з GitHub Actions (SaveEcoBot блокує прямі запити з браузера). Запустіть workflow вручну або налаштуйте зовнішній cron.';
       el.className = 'data-source-badge ' + (source === 'live' ? 'src-live' : 'src-cache');
     }
 
     async function loadStation() {
-      // 1) Миттєво — локальний файл
       const local = await loadLocalJson(STATION_URL);
       if (local) {
         LAST_STATION = local;
+        // підтягнути data/updated_at.txt якщо немає _fetched_at
+        if (!local._fetched_at) {
+          try {
+            const t = await fetch('./data/updated_at.txt?t=' + Date.now(), { cache: 'no-store' });
+            if (t.ok) local._fetched_at = (await t.text()).trim();
+          } catch (e) {}
+        }
         setDataSourceBadge('cache', local);
         updateUI(local);
       } else {
@@ -852,13 +857,7 @@
         setDataSourceBadge('snapshot', INITIAL_DATA);
         updateUI(INITIAL_DATA);
       }
-      // 2) Фон: live через проксі (не блокує UI)
-      tryLiveProxies(STATION_LIVE).then(live => {
-        if (!live || !live.last_data) return;
-        LAST_STATION = live;
-        setDataSourceBadge('live', live);
-        updateUI(live);
-      }).catch(() => {});
+      // Live-проксі вимкнено: публічні CORS-проксі не віддають SaveEcoBot
     }
 
     async function loadAqiHistory() {
@@ -866,14 +865,10 @@
       if (local && local.history) {
         const items = parseAqiHistory(local.history);
         if (items.length) renderAqiHistory(items);
+        else renderAqiHistory(HISTORY_AQI_SNAP);
       } else {
         renderAqiHistory(HISTORY_AQI_SNAP);
       }
-      tryLiveProxies(AQI_LIVE).then(live => {
-        if (!live || !live.history) return;
-        const items = parseAqiHistory(live.history);
-        if (items.length) renderAqiHistory(items);
-      }).catch(() => {});
     }
 
     let LAST_STATION = INITIAL_DATA;
