@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="uk">
 <head>
@@ -784,7 +785,7 @@
 
     async function fetchJsonUrl(url, timeoutMs) {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), timeoutMs || 8000);
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs || 4000);
       try {
         const res = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -796,21 +797,23 @@
       }
     }
 
-    /** SaveEcoBot live через CORS-проксі, інакше локальний файл з Actions */
-    async function loadSaveEcoBot(liveUrl, localUrl) {
-      // 1) CORS proxies → live SaveEcoBot
-      for (const make of CORS_PROXIES) {
-        try {
-          const data = await fetchJsonUrl(make(liveUrl + '?t=' + Date.now()), 7000);
-          if (data) return { data, source: 'live' };
-        } catch (e) { /* next proxy */ }
-      }
-      // 2) Локальний кеш GitHub Pages (оновлює Actions)
+    /** Швидко: спочатку локальний кеш. Live-проксі — у фоні, короткий таймаут. */
+    async function loadLocalJson(localUrl) {
       try {
-        const data = await fetchJsonUrl(localUrl + '?t=' + Date.now(), 5000);
-        if (data) return { data, source: 'cache' };
-      } catch (e) { /* fall through */ }
-      return null;
+        return await fetchJsonUrl(localUrl + (localUrl.includes('?') ? '&' : '?') + 't=' + Date.now(), 4000);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function tryLiveProxies(liveUrl) {
+      const target = liveUrl + (liveUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+      // Паралельно, хто перший відповів за 2.5 с
+      const tasks = CORS_PROXIES.map(make =>
+        fetchJsonUrl(make(target), 2500).catch(() => null)
+      );
+      const results = await Promise.all(tasks);
+      return results.find(d => d && typeof d === 'object') || null;
     }
 
     async function loadJson(primary, fallback) {
@@ -818,10 +821,9 @@
       let lastErr;
       for (const url of urls) {
         try {
-          return await fetchJsonUrl(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), 10000);
+          return await fetchJsonUrl(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), 6000);
         } catch (e) {
           lastErr = e;
-          if (!String(url).includes('saveecobot.com')) console.warn('load failed', url, e);
         }
       }
       throw lastErr || new Error('no data');
@@ -839,54 +841,61 @@
     }
 
     async function loadStation() {
-      try {
-        const res = await loadSaveEcoBot(STATION_LIVE, STATION_URL);
-        if (res) {
-          LAST_STATION = res.data;
-          setDataSourceBadge(res.source, res.data);
-          updateUI(LAST_STATION);
-          return;
-        }
-      } catch (e) { console.warn(e); }
-      LAST_STATION = INITIAL_DATA;
-      setDataSourceBadge('snapshot', INITIAL_DATA);
-      updateUI(INITIAL_DATA);
+      // 1) Миттєво — локальний файл
+      const local = await loadLocalJson(STATION_URL);
+      if (local) {
+        LAST_STATION = local;
+        setDataSourceBadge('cache', local);
+        updateUI(local);
+      } else {
+        LAST_STATION = INITIAL_DATA;
+        setDataSourceBadge('snapshot', INITIAL_DATA);
+        updateUI(INITIAL_DATA);
+      }
+      // 2) Фон: live через проксі (не блокує UI)
+      tryLiveProxies(STATION_LIVE).then(live => {
+        if (!live || !live.last_data) return;
+        LAST_STATION = live;
+        setDataSourceBadge('live', live);
+        updateUI(live);
+      }).catch(() => {});
     }
 
     async function loadAqiHistory() {
-      try {
-        const res = await loadSaveEcoBot(AQI_LIVE, HISTORY_AQI_URL);
-        if (res) {
-          const items = parseAqiHistory(res.data.history);
-          if (items.length) { renderAqiHistory(items); return; }
-        }
-      } catch (e) { console.warn('aqi failed', e); }
-      renderAqiHistory(HISTORY_AQI_SNAP);
+      const local = await loadLocalJson(HISTORY_AQI_URL);
+      if (local && local.history) {
+        const items = parseAqiHistory(local.history);
+        if (items.length) renderAqiHistory(items);
+      } else {
+        renderAqiHistory(HISTORY_AQI_SNAP);
+      }
+      tryLiveProxies(AQI_LIVE).then(live => {
+        if (!live || !live.history) return;
+        const items = parseAqiHistory(live.history);
+        if (items.length) renderAqiHistory(items);
+      }).catch(() => {});
     }
 
     let LAST_STATION = INITIAL_DATA;
 
+    function meteoFromAny(data) {
+      if (data && data.temp && data.humidity) return data;
+      if (data && data.hourly) return meteoFromApi(data);
+      return null;
+    }
+
     async function loadMeteo() {
+      // Швидко: локальний meteo.json
       let meteo = null;
-      try {
-        let data;
+      const local = await loadLocalJson(METEO_LOCAL);
+      meteo = meteoFromAny(local);
+      if (!meteo) {
         try {
-          // Live Open-Meteo first, then local cache from Actions
-          data = await loadJson(METEO_URL, METEO_LOCAL);
-        } catch (e1) {
-          const res = await fetch(METEO_URL + (METEO_URL.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store' });
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          data = await res.json();
-          if (data.error) throw new Error(data.reason || 'meteo error');
-        }
-        // local file may already be processed series OR raw open-meteo
-        if (data.temp && data.humidity) {
-          meteo = data;
-        } else {
-          meteo = meteoFromApi(data);
-        }
-      } catch (e) {
-        console.warn('Meteo API:', e);
+          const data = await fetchJsonUrl(METEO_URL + '&t=' + Date.now(), 5000);
+          meteo = meteoFromAny(data);
+        } catch (e) { /* ignore */ }
+      }
+      if (!meteo) {
         meteo = { temp: METEO_SNAP.temp.slice(), humidity: METEO_SNAP.humidity.slice(), pressure_mmhg: METEO_SNAP.pressure_mmhg.slice() };
         const startMs = nowKyiv().getTime() - 48 * 3600 * 1000;
         const endMs = nowKyiv().getTime() + 30 * 60 * 1000;
@@ -900,29 +909,41 @@
       }
       meteo = mergeStationIntoMeteo(meteo, LAST_STATION);
       renderMeteo(meteo);
+
+      // Фон: свіжий Open-Meteo
+      fetchJsonUrl(METEO_URL + '&t=' + Date.now(), 5000).then(data => {
+        const m = meteoFromAny(data);
+        if (!m) return;
+        renderMeteo(mergeStationIntoMeteo(m, LAST_STATION));
+      }).catch(() => {});
     }
 
     async function refreshAll() {
       const btn = document.getElementById('refresh-btn');
       const loading = document.getElementById('loading');
-      btn.classList.add('loading'); loading.classList.add('active');
+      btn.classList.add('loading');
+      // Не блокуємо екран оверлеєм на хвилини — лише спінер на кнопці
       try {
-        await loadStation(); // first — so meteo can append live point
-        await Promise.all([loadAqiHistory(), loadMeteo()]);
-      } finally { btn.classList.remove('loading'); loading.classList.remove('active'); }
+        await Promise.all([loadStation(), loadAqiHistory(), loadMeteo()]);
+      } finally {
+        btn.classList.remove('loading');
+        loading.classList.remove('active');
+      }
     }
 
     updateUI(INITIAL_DATA);
+    setDataSourceBadge('snapshot', INITIAL_DATA);
     renderAqiHistory(HISTORY_AQI_SNAP);
     renderMeteo(mergeStationIntoMeteo({
       temp: METEO_SNAP.temp.slice(),
       humidity: METEO_SNAP.humidity.slice(),
       pressure_mmhg: METEO_SNAP.pressure_mmhg.slice()
     }, INITIAL_DATA));
+    // Без повноекранного оверлею — дані з'являться одразу з кешу
     refreshAll();
 
     // Автооновлення кожні 5 хв (live API), поки вкладка відкрита
-    const AUTO_REFRESH_MS = 3 * 60 * 1000; // live через проксі
+    const AUTO_REFRESH_MS = 10 * 60 * 1000; // локально миттєво; live у фоні
     setInterval(() => {
       if (document.hidden) return; // не смикати API у фоні
       refreshAll();
