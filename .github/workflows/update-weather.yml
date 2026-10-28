@@ -15,110 +15,80 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Create data folder
         run: mkdir -p data
 
-      - name: Download station
+      - name: Download station + AQI
         run: |
-          curl -fsSL --retry 3 --retry-delay 2 \
+          set -e
+          curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors \
             "https://www.saveecobot.com/station/25862.json?t=$(date +%s)" \
             -o data/station.json
-
-      - name: Download AQI history
-        run: |
-          curl -fsSL --retry 3 --retry-delay 2 \
+          curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors \
             "https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json?t=$(date +%s)" \
             -o data/aqi.json
+          python3 - <<'PY'
+          import json
+          st = json.load(open("data/station.json"))
+          aq = json.load(open("data/aqi.json"))
+          assert "last_data" in st and st.get("id") == 25862, "bad station.json"
+          assert "history" in aq, "bad aqi.json"
+          print("station last_measurement_at:", st.get("last_measurement_at"))
+          print("station aqi:", st.get("aqi"), "aqi_updated_at:", st.get("aqi_updated_at"))
+          print("aqi history points:", len(aq.get("history") or []))
+          PY
 
       - name: Download Open-Meteo (48h)
         run: |
+          set -e
           curl -fsSL --retry 3 --retry-delay 2 \
             "https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe%2FKyiv&forecast_days=1" \
             -o data/meteo_raw.json
-
-          python3 << 'PY'
+          python3 - <<'PY'
           import json
-          from datetime import datetime, timezone, timedelta
-
           raw = json.load(open("data/meteo_raw.json"))
-
           if raw.get("error"):
               raise SystemExit(raw.get("reason", "meteo error"))
-
           h = raw["hourly"]
-
-          now = datetime.now(timezone(timedelta(hours=3)))
-          start = now - timedelta(hours=48)
-          end = now + timedelta(minutes=30)
-
-          out = {
-              "temp": [],
-              "humidity": [],
-              "pressure_mmhg": []
-          }
-
+          out = {"temp": [], "humidity": [], "pressure_mmhg": []}
           for i, t in enumerate(h["time"]):
-              try:
-                  dt = datetime.fromisoformat(t).replace(
-                      tzinfo=timezone(timedelta(hours=3))
-                  )
-              except Exception:
-                  continue
-
-              if dt < start or dt > end:
-                  continue
-
               if h["temperature_2m"][i] is None:
                   continue
-
               out["temp"].append([t, h["temperature_2m"][i]])
               out["humidity"].append([t, h["relative_humidity_2m"][i]])
-
-              p_hpa = h["surface_pressure"][i]
-              out["pressure_mmhg"].append(
-                  [t, round(p_hpa * 0.750061683, 1)]
-              )
-
-          json.dump(
-              out,
-              open("data/meteo.json", "w"),
-              ensure_ascii=False,
-              separators=(",", ":")
-          )
+              out["pressure_mmhg"].append([t, round(h["surface_pressure"][i] * 0.750061683, 1)])
+          for k in out:
+              out[k] = out[k][-50:]
+          json.dump(out, open("data/meteo.json", "w"), ensure_ascii=False, separators=(",", ":"))
+          print("meteo points", len(out["temp"]), "last", out["temp"][-1] if out["temp"] else None)
           PY
-
           rm -f data/meteo_raw.json
-
-      - name: Debug timestamps
-        run: |
-          echo "=== station.json ==="
-          jq -r '.last_measurement_at' data/station.json
-          jq -r '.aqi_updated_at' data/station.json
-
-          echo "=== aqi.json ==="
-          jq -r '._snapshot_meta.source_updated_at' data/aqi.json
 
       - name: Stamp update time
         run: |
           date -u +"%Y-%m-%dT%H:%M:%SZ" > data/updated_at.txt
+          python3 - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          st = json.load(open("data/station.json"))
+          st["_fetched_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+          json.dump(st, open("data/station.json", "w"), ensure_ascii=False, separators=(",", ":"))
+          print("fetched_at", st["_fetched_at"])
+          PY
 
       - name: Commit and push
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-
-          git add data/station.json
-          git add data/aqi.json
-          git add data/meteo.json
-          git add data/updated_at.txt
-
+          git add data/station.json data/aqi.json data/meteo.json data/updated_at.txt
           if git diff --staged --quiet; then
-            echo "No data changes"
+            echo "No data changes (unexpected)"
           else
-            git commit -m "Update weather data $(date -u +%Y-%m-%dT%H:%MZ)"
+            MSG="Update weather $(date -u +%Y-%m-%dT%H:%MZ)"
+            git commit -m "$MSG"
             git push
+            echo "Pushed: $MSG"
           fi
