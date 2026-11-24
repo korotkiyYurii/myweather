@@ -239,6 +239,10 @@
     const STATION_LIVE = 'https://www.saveecobot.com/station/25862.json';
     const AQI_LIVE = 'https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json';
     const CORS_PROXIES = []; // публічні проксі не працюють з SaveEcoBot
+    // Cloudflare Worker, що віддає дані SaveEcoBot із CORS-заголовками.
+    // Вставте адресу свого Worker (без / в кінці). Поки тут <...>, сторінка бере дані з ./data/*.json
+    const PROXY_BASE = 'https://myweather-proxy.<ваш-акаунт>.workers.dev';
+    const PROXY_ON = !PROXY_BASE.includes('<');
     const LS_KEY = 'seb_station_25862_prev';
     let DATA_SOURCE = '—'; // для індикатора свіжості
     // Trends derived from chart series (preferred over localStorage buffer)
@@ -275,13 +279,28 @@
 
     function getAqiLevel(aqi) { return AQI_LEVELS.find(l => aqi <= l.max) || AQI_LEVELS[AQI_LEVELS.length - 1]; }
 
+    /** Додає до «локального київського» рядка правильний офсет (+02:00 взимку, +03:00 влітку) */
+    function kyivOffset(naiveIso) {
+      try {
+        const probe = new Date(naiveIso + 'Z');
+        if (isNaN(probe)) return '+02:00';
+        const tz = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Kyiv', timeZoneName: 'shortOffset' })
+          .formatToParts(probe).find(p => p.type === 'timeZoneName').value; // напр. "GMT+2"
+        const m = tz.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+        if (!m) return '+02:00';
+        return m[1] + m[2].padStart(2, '0') + ':' + (m[3] || '00');
+      } catch (e) { return '+02:00'; }
+    }
+    function withKyivOffset(s) {
+      return /[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + kyivOffset(s);
+    }
+
     function formatDate(str) {
       if (!str) return '—';
       // SaveEcoBot timestamps are already local (Europe/Kyiv), not UTC
       const s = String(str).trim().replace(' ', 'T');
       // Parse as Kyiv local by attaching fixed offset
-      const withOffset = /[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : (s + '+03:00');
-      const d = new Date(withOffset);
+      const d = new Date(withKyivOffset(s));
       if (isNaN(d)) return str;
       const pad = n => String(n).padStart(2, '0');
       // Format in Europe/Kyiv explicitly
@@ -298,8 +317,7 @@
     function parseKyiv(str) {
       if (!str) return null;
       const s = String(str).trim().replace(' ', 'T');
-      const withOffset = /[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : (s + '+03:00');
-      const d = new Date(withOffset);
+      const d = new Date(withKyivOffset(s));
       return isNaN(d) ? null : d;
     }
     function formatNumber(n) { return new Intl.NumberFormat('uk-UA').format(n); }
@@ -548,7 +566,7 @@
 
     function renderAqiHistory(items) {
       if (!items.length) return;
-      const labels = items.map(([ts]) => { const s = String(ts).replace(' ', 'T'); return /[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + '+03:00'; });
+      const labels = items.map(([ts]) => { const s = String(ts).replace(' ', 'T'); return withKyivOffset(s); });
       const values = items.map(([, v]) => v);
       const min = Math.min(...values), max = Math.max(...values);
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
@@ -608,8 +626,7 @@
       const labels = cleaned.map(([t]) => {
         let s = String(t);
         if (s.length === 16) s += ':00';
-        if (!/[Zz]|[+\-]\d{2}:?\d{2}$/.test(s)) s += '+03:00';
-        return s;
+        return withKyivOffset(s);
       });
       const values = cleaned.map(([, v]) => +v);
       const t = trendFromSeries(cleaned);
@@ -685,7 +702,7 @@
 
     /** Current instant in Europe/Kyiv as Date */
     function nowKyiv() {
-      // Build a Date that reflects Kyiv wall-clock by formatting then parsing with +03:00
+      // Build a Date that reflects Kyiv wall-clock by formatting then parsing with the correct Kyiv offset
       const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Europe/Kyiv',
         year: 'numeric', month: '2-digit', day: '2-digit',
@@ -693,7 +710,7 @@
         hour12: false
       }).formatToParts(new Date());
       const g = t => (parts.find(p => p.type === t) || {}).value;
-      return new Date(g('year') + '-' + g('month') + '-' + g('day') + 'T' + g('hour') + ':' + g('minute') + ':' + g('second') + '+03:00');
+      return new Date(withKyivOffset(g('year') + '-' + g('month') + '-' + g('day') + 'T' + g('hour') + ':' + g('minute') + ':' + g('second')));
     }
 
     function meteoFromApi(data) {
@@ -835,11 +852,24 @@
       if (measured) text += ' · вимір. ' + formatDate(measured);
       if (fetched) text += ' · оновл. ' + formatDate(String(fetched).replace('T', ' ').replace('Z', ''));
       el.textContent = text;
-      el.title = 'Дані з GitHub Actions (SaveEcoBot блокує прямі запити з браузера). Запустіть workflow вручну або налаштуйте зовнішній cron.';
+      el.title = source === 'live'
+        ? 'Дані напряму з SaveEcoBot через проксі (Cloudflare Worker)'
+        : 'Проксі недоступний — показано збережені дані з ./data/';
       el.className = 'data-source-badge ' + (source === 'live' ? 'src-live' : 'src-cache');
     }
 
     async function loadStation() {
+      if (PROXY_ON) {
+        try {
+          const live = await fetchJsonUrl(PROXY_BASE + '/station?t=' + Date.now(), 8000);
+          if (live && Array.isArray(live.last_data)) {
+            LAST_STATION = live;
+            setDataSourceBadge('live', live);
+            updateUI(live);
+            return;
+          }
+        } catch (e) { /* fallback на кеш нижче */ }
+      }
       const local = await loadLocalJson(STATION_URL);
       if (local) {
         LAST_STATION = local;
@@ -861,7 +891,14 @@
     }
 
     async function loadAqiHistory() {
-      const local = await loadLocalJson(HISTORY_AQI_URL);
+      let local = null;
+      if (PROXY_ON) {
+        try {
+          const live = await fetchJsonUrl(PROXY_BASE + '/aqi?t=' + Date.now(), 8000);
+          if (live && live.history) local = live;
+        } catch (e) { /* fallback */ }
+      }
+      if (!local) local = await loadLocalJson(HISTORY_AQI_URL);
       if (local && local.history) {
         const items = parseAqiHistory(local.history);
         if (items.length) renderAqiHistory(items);
@@ -937,8 +974,8 @@
     // Без повноекранного оверлею — дані з'являться одразу з кешу
     refreshAll();
 
-    // Автооновлення кожні 5 хв (live API), поки вкладка відкрита
-    const AUTO_REFRESH_MS = 10 * 60 * 1000; // локально миттєво; live у фоні
+    // Автооновлення кожні 2 хв, поки вкладка відкрита
+    const AUTO_REFRESH_MS = 2 * 60 * 1000; // дані з проксі кешуються на 60 с
     setInterval(() => {
       if (document.hidden) return; // не смикати API у фоні
       refreshAll();
