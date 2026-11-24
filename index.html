@@ -195,17 +195,17 @@
       <div class="mini-chart-card">
         <h4>🌡️ Температура <span class="mini-trend" id="trend-temp"></span></h4>
         <div class="mini-chart-wrap"><canvas id="temp-chart"></canvas></div>
-        <p class="note">Open-Meteo · координати станції</p>
+        <p class="note">Лінія — Open-Meteo (модель для координат станції), точка — вимір станції</p>
       </div>
       <div class="mini-chart-card">
         <h4>💧 Вологість <span class="mini-trend" id="trend-hum"></span></h4>
         <div class="mini-chart-wrap"><canvas id="hum-chart"></canvas></div>
-        <p class="note">Open-Meteo · координати станції</p>
+        <p class="note">Лінія — Open-Meteo (модель для координат станції), точка — вимір станції</p>
       </div>
       <div class="mini-chart-card">
         <h4>📊 Тиск <span class="mini-trend" id="trend-press"></span></h4>
         <div class="mini-chart-wrap"><canvas id="press-chart"></canvas></div>
-        <p class="note">мм рт.ст. · Open-Meteo</p>
+        <p class="note">мм рт.ст. · Лінія — Open-Meteo (модель), точка — вимір станції</p>
       </div>
     </div>
 
@@ -241,7 +241,7 @@
     const CORS_PROXIES = []; // публічні проксі не працюють з SaveEcoBot
     // Cloudflare Worker, що віддає дані SaveEcoBot із CORS-заголовками.
     // Вставте адресу свого Worker (без / в кінці). Поки тут <...>, сторінка бере дані з ./data/*.json
-    const PROXY_BASE = 'https://myweather-proxy.korotkij.workers.dev';
+    const PROXY_BASE = 'https://myweather-proxy.<ваш-акаунт>.workers.dev';
     const PROXY_ON = !PROXY_BASE.includes('<');
     const LS_KEY = 'seb_station_25862_prev';
     let DATA_SOURCE = '—'; // для індикатора свіжості
@@ -615,7 +615,7 @@
       });
     }
 
-    function renderMiniChart(canvasId, series, color, yLabel, trendElId, decimals) {
+    function renderMiniChart(canvasId, series, color, yLabel, trendElId, decimals, stationPoint) {
       if (!series || !series.length) return;
       // Sort & dedupe by time
       const cleaned = series
@@ -637,7 +637,9 @@
       opts.layout = { padding: { top: 8, right: 12, bottom: 0, left: 0 } };
       opts.clip = false; // avoid cut-off artefacts; scale will fit all points
 
-      const min = Math.min(...values), max = Math.max(...values);
+      const stVal = stationPoint ? +stationPoint[1] : null;
+      const allVals = stVal != null && !isNaN(stVal) ? values.concat(stVal) : values;
+      const min = Math.min(...allVals), max = Math.max(...allVals);
       const span = Math.max(max - min, 0.5);
       const pad = Math.max(span * 0.2, 1);
       // Nice bounds so last point is never glued to the frame
@@ -645,7 +647,9 @@
       opts.scales.y.max = Math.ceil((max + pad) * 10) / 10;
       // time axis: explicit min/max from data so nothing sticks out horizontally
       const t0 = new Date(labels[0]).getTime();
-      const t1 = new Date(labels[labels.length - 1]).getTime();
+      let t1 = new Date(labels[labels.length - 1]).getTime();
+      const stationT = stationPoint ? new Date(withKyivOffset(String(stationPoint[0]).length <= 16 ? stationPoint[0] + ':00' : stationPoint[0])).getTime() : NaN;
+      if (!isNaN(stationT) && stationT > t1) t1 = stationT;
       if (!isNaN(t0) && !isNaN(t1) && t1 >= t0) {
         const xPad = Math.max((t1 - t0) * 0.02, 5 * 60 * 1000);
         opts.scales.x.min = t0 - xPad;
@@ -666,6 +670,7 @@
         data: {
           labels,
           datasets: [{
+            label: 'Open-Meteo',
             data: values,
             borderColor: color,
             backgroundColor: color + '22',
@@ -681,16 +686,28 @@
             pointHoverRadius: 4,
             pointHitRadius: 8,
             spanGaps: false
-          }]
+          }].concat(stVal != null && !isNaN(stVal) && !isNaN(stationT) ? [{
+            label: 'Станція',
+            data: [{ x: stationT, y: stVal }],
+            showLine: false,
+            fill: false,
+            borderColor: '#ffffff',
+            backgroundColor: (canvasId === 'temp-chart' && stVal < 0) ? '#3b82f6' : color,
+            borderWidth: 2,
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointStyle: 'circle'
+          }] : [])
         },
         options: opts
       });
     }
 
     function renderMeteo(meteo) {
-      renderMiniChart('temp-chart', meteo.temp, '#f97316', '°C', 'trend-temp', 1);
-      renderMiniChart('hum-chart', meteo.humidity, '#22c55e', '%', 'trend-hum', 0);
-      renderMiniChart('press-chart', meteo.pressure_mmhg, '#a855f7', 'мм рт.ст.', 'trend-press', 1);
+      const st = meteo.station || {};
+      renderMiniChart('temp-chart', meteo.temp, '#f97316', '°C', 'trend-temp', 1, st.temp);
+      renderMiniChart('hum-chart', meteo.humidity, '#22c55e', '%', 'trend-hum', 0, st.humidity);
+      renderMiniChart('press-chart', meteo.pressure_mmhg, '#a855f7', 'мм рт.ст.', 'trend-press', 1, st.pressure_mmhg);
 
       // Same trends on metric cards above charts
       const tTemp = trendFromSeries(meteo.temp);
@@ -783,30 +800,16 @@
           return ts && ts.getTime() <= stationMs + 60 * 1000;
         });
 
-        // Replace point in the same hour, or append
-        const hourKey = label.slice(0, 13); // YYYY-MM-DDTHH
-        let replaced = false;
-        for (let i = 0; i < filtered.length; i++) {
-          if (String(filtered[i][0]).slice(0, 13) === hourKey) {
-            filtered[i] = [label, value];
-            replaced = true;
-            break;
-          }
-        }
-        if (!replaced) filtered.push([label, value]);
-
-        // Sort by time ascending
-        filtered.sort((a, b) => {
-          const ta = parseKyiv(String(a[0]).length <= 16 ? a[0] + ':00' : a[0]);
-          const tb = parseKyiv(String(b[0]).length <= 16 ? b[0] + ':00' : b[0]);
-          return (ta ? ta.getTime() : 0) - (tb ? tb.getTime() : 0);
-        });
-        return filtered;
+        return filtered; // лінія лишається суто Open-Meteo, показання станції додаються окремою точкою
       }
 
-      if (map.temperature) meteo.temp = upsert(meteo.temp, +(+map.temperature.value).toFixed(1));
-      if (map.humidity) meteo.humidity = upsert(meteo.humidity, +(+map.humidity.value).toFixed(1));
-      if (map.pressure_pa) meteo.pressure_mmhg = upsert(meteo.pressure_mmhg, +PA_TO_MMHG(map.pressure_pa.value).toFixed(1));
+      meteo.temp = upsert(meteo.temp, 1);
+      meteo.humidity = upsert(meteo.humidity, 1);
+      meteo.pressure_mmhg = upsert(meteo.pressure_mmhg, 1);
+      meteo.station = {};
+      if (map.temperature) meteo.station.temp = [label, +(+map.temperature.value).toFixed(1)];
+      if (map.humidity) meteo.station.humidity = [label, +(+map.humidity.value).toFixed(1)];
+      if (map.pressure_pa) meteo.station.pressure_mmhg = [label, +PA_TO_MMHG(map.pressure_pa.value).toFixed(1)];
       return meteo;
     }
 
