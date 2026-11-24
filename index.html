@@ -234,7 +234,7 @@
     const STATION_URL = './data/station.json';
     const HISTORY_AQI_URL = './data/aqi.json';
     const METEO_LOCAL = './data/meteo.json';
-    const METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe/Kyiv&forecast_days=1';
+    const METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe/Kyiv&forecast_days=1&current=temperature_2m,relative_humidity_2m';
     // SaveEcoBot блокує CORS з браузера — беремо через публічні проксі, далі локальний кеш Actions
     const STATION_LIVE = 'https://www.saveecobot.com/station/25862.json';
     const AQI_LIVE = 'https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json';
@@ -243,6 +243,10 @@
     // Вставте адресу свого Worker (без / в кінці). Поки тут <...>, сторінка бере дані з ./data/*.json
     const PROXY_BASE = 'https://myweather-proxy.<ваш-акаунт>.workers.dev';
     const PROXY_ON = !PROXY_BASE.includes('<');
+    // true  = температура й вологість зі станції (поля temperature / humidity; heca_* — внутрішньокорпусні, не використовуються),
+    //         на графіках показується точка станції;
+    // false = температура й вологість у картках з Open-Meteo, точки станції на графіках немає.
+    const USE_STATION_TEMP_HUM = true;
     const LS_KEY = 'seb_station_25862_prev';
     let DATA_SOURCE = '—'; // для індикатора свіжості
     // Trends derived from chart series (preferred over localStorage buffer)
@@ -476,6 +480,7 @@
           '</div>';
       }).join('');
 
+      if (!USE_STATION_TEMP_HUM && LAST_METEO) applyModelToCards(LAST_METEO);
       prevMap.aqi = aqi;
       // Push AFTER reading trends so this sample becomes history for next time
       setTimeout(() => savePrevReadings(prevMap), 800);
@@ -704,9 +709,11 @@
     }
 
     function renderMeteo(meteo) {
+      LAST_METEO = meteo;
       const st = meteo.station || {};
-      renderMiniChart('temp-chart', meteo.temp, '#f97316', '°C', 'trend-temp', 1, st.temp);
-      renderMiniChart('hum-chart', meteo.humidity, '#22c55e', '%', 'trend-hum', 0, st.humidity);
+      const useSt = USE_STATION_TEMP_HUM;
+      renderMiniChart('temp-chart', meteo.temp, '#f97316', '°C', 'trend-temp', 1, useSt ? st.temp : undefined);
+      renderMiniChart('hum-chart', meteo.humidity, '#22c55e', '%', 'trend-hum', 0, useSt ? st.humidity : undefined);
       renderMiniChart('press-chart', meteo.pressure_mmhg, '#a855f7', 'мм рт.ст.', 'trend-press', 1, st.pressure_mmhg);
 
       // Same trends on metric cards above charts
@@ -717,6 +724,28 @@
       if (tHum)   SERIES_TRENDS.humidity = tHum;
       if (tPress) SERIES_TRENDS.pressure_pa = tPress;
       applySeriesTrendsToCards();
+      if (!useSt) applyModelToCards(meteo);
+    }
+
+    /** Підставляє температуру й вологість з Open-Meteo в картки (замість завищеного датчика станції) */
+    function applyModelToCards(meteo) {
+      if (!meteo) return;
+      const cur = meteo.current || {};
+      const lastOf = a => (a && a.length) ? a[a.length - 1] : null;
+      const lt = lastOf(meteo.temp), lh = lastOf(meteo.humidity);
+      const items = {
+        temperature: { v: cur.temp != null ? cur.temp : (lt ? lt[1] : null), t: cur.time || (lt ? lt[0] : null) },
+        humidity: { v: cur.humidity != null ? cur.humidity : (lh ? lh[1] : null), t: cur.time || (lh ? lh[0] : null) },
+      };
+      document.querySelectorAll('.metric-card[data-key]').forEach(card => {
+        const it = items[card.getAttribute('data-key')];
+        if (!it || it.v == null || isNaN(it.v)) return;
+        const val = card.querySelector('.value');
+        if (val && val.firstChild) val.firstChild.nodeValue = Number(it.v).toFixed(1);
+        card.setAttribute('data-value', it.v);
+        const upd = card.querySelector('.updated');
+        if (upd && it.t) upd.textContent = 'Open-Meteo · ' + formatDate(String(it.t).length <= 16 ? it.t + ':00' : it.t);
+      });
     }
 
     /** Update trend badges already rendered on metric cards */
@@ -764,6 +793,9 @@
         out.temp.push([t, h.temperature_2m[i]]);
         out.humidity.push([t, h.relative_humidity_2m[i]]);
         out.pressure_mmhg.push([t, Math.round(HPA_TO_MMHG(h.surface_pressure[i]) * 10) / 10]);
+      }
+      if (data.current && data.current.temperature_2m != null) {
+        out.current = { temp: data.current.temperature_2m, humidity: data.current.relative_humidity_2m, time: data.current.time };
       }
       return out;
     }
@@ -926,6 +958,7 @@
     }
 
     let LAST_STATION = INITIAL_DATA;
+    let LAST_METEO = null;
 
     function meteoFromAny(data) {
       if (data && data.temp && data.humidity) return data;
