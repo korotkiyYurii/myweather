@@ -96,6 +96,20 @@
     .trend-down { color: #4ade80; background: rgba(34, 197, 94, 0.15); }
     .trend-flat { color: #8b9cb3; background: rgba(139, 156, 179, 0.12); }
     .metric-card .updated { font-size: 0.75rem; color: var(--text-muted); margin-top: 10px; opacity: 0.8; }
+    .metrics-grid.metrics-pm { grid-template-columns: repeat(2, 1fr); margin-bottom: 16px; }
+    .metrics-grid.metrics-weather { grid-template-columns: repeat(3, 1fr); }
+    .metric-card .decode { font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; }
+    .metric-card .metric-desc { font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; margin-top: 10px; }
+    @media (max-width: 860px) {
+      .metrics-grid.metrics-weather { gap: 12px; }
+      .metrics-grid.metrics-weather .metric-card { padding: 16px; }
+      .metrics-grid.metrics-weather .metric-card .value { font-size: 1.45rem; }
+    }
+    @media (max-width: 560px) {
+      .metrics-grid.metrics-pm { grid-template-columns: 1fr; }
+      .metrics-grid.metrics-weather { grid-template-columns: 1fr 1fr; }
+      .metrics-grid.metrics-weather .metric-card:last-child { grid-column: 1 / -1; }
+    }
     .history-section {
       background: var(--card); border: 1px solid var(--border); border-radius: 14px;
       padding: 24px; margin-bottom: 24px;
@@ -136,7 +150,6 @@
     .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @media (max-width: 600px) {
       .aqi-number { font-size: 3rem; } .header-left h1 { font-size: 1.4rem; }
-      .metrics-grid { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
@@ -182,7 +195,8 @@
       </div>
     </div>
 
-    <div class="metrics-grid" id="metrics-grid"></div>
+    <div class="metrics-grid metrics-pm" id="metrics-pm"></div>
+    <div class="metrics-grid metrics-weather" id="metrics-weather"></div>
 
     <div class="history-section">
       <h3>📈 Історія AQI за останні 2 доби</h3>
@@ -234,19 +248,19 @@
     const STATION_URL = './data/station.json';
     const HISTORY_AQI_URL = './data/aqi.json';
     const METEO_LOCAL = './data/meteo.json';
-    const METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe/Kyiv&forecast_days=1&current=temperature_2m,relative_humidity_2m';
+    const METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe/Kyiv&forecast_days=1&current=temperature_2m,relative_humidity_2m,surface_pressure';
     // SaveEcoBot блокує CORS з браузера — беремо через публічні проксі, далі локальний кеш Actions
     const STATION_LIVE = 'https://www.saveecobot.com/station/25862.json';
     const AQI_LIVE = 'https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json';
     const CORS_PROXIES = []; // публічні проксі не працюють з SaveEcoBot
     // Cloudflare Worker, що віддає дані SaveEcoBot із CORS-заголовками.
     // Вставте адресу свого Worker (без / в кінці). Поки тут <...>, сторінка бере дані з ./data/*.json
-    const PROXY_BASE = 'https://myweather-proxy.korotkij.workers.dev';
+    const PROXY_BASE = 'https://myweather-proxy.<ваш-акаунт>.workers.dev';
     const PROXY_ON = !PROXY_BASE.includes('<');
-    // true  = температура й вологість зі станції (поля temperature / humidity; heca_* — внутрішньокорпусні, не використовуються),
-    //         на графіках показується точка станції;
-    // false = температура й вологість у картках з Open-Meteo, точки станції на графіках немає.
-    const USE_STATION_TEMP_HUM = true;
+    // Картки «Температура», «Вологість», «Тиск» беруть поточні значення з Open-Meteo (координати станції).
+    // На графіках додатково показується точка вимірювання станції (поля temperature / humidity / pressure_pa;
+    // heca_* — внутрішньокорпусні, не використовуються). false = картки зі станції.
+    const CARDS_FROM_OPEN_METEO = true;
     const LS_KEY = 'seb_station_25862_prev';
     let DATA_SOURCE = '—'; // для індикатора свіжості
     // Trends derived from chart series (preferred over localStorage buffer)
@@ -266,9 +280,9 @@
     ];
 
     const METRIC_META = {
-      pm25: { label: 'PM2.5', unit: 'µg/m³', icon: '🌫️', color: '#3b82f6', decimals: 1,
+      pm25: { label: 'PM2.5', full: 'Particulate Matter 2.5 — тверді частинки до 2,5 мкм', unit: 'µg/m³', icon: '🌫️', color: '#3b82f6', decimals: 1,
         hint: 'Дрібнодисперсний пил розміром до 2,5 мкм. Проникає глибоко в легені та кров. Основне джерело розрахунку AQI. Норма (добре): до ~12 µg/m³' },
-      pm10: { label: 'PM10', unit: 'µg/m³', icon: '💨', color: '#06b6d4', decimals: 1,
+      pm10: { label: 'PM10', full: 'Particulate Matter 10 — тверді частинки до 10 мкм', unit: 'µg/m³', icon: '💨', color: '#06b6d4', decimals: 1,
         hint: 'Частинки пилу розміром до 10 мкм (пил, пилок, сажа). Затримуються у верхніх дихальних шляхах. Норма (добре): до ~54 µg/m³' },
       temperature: { label: 'Температура', unit: '°C', icon: '🌡️', color: '#f97316', decimals: 1 },
       humidity: { label: 'Вологість', unit: '%', icon: '💧', color: '#22c55e', decimals: 1 },
@@ -459,28 +473,39 @@
     }
 
     function renderMetrics(lastData, aqi) {
-      const grid = document.getElementById('metrics-grid');
+      const byKey = {};
+      (lastData || []).forEach(m => { byKey[m.phenomenon] = m; });
       const prevMap = {};
-      const HIDDEN = new Set(['heca_temperature', 'heca_humidity']);
-      grid.innerHTML = lastData.filter(m => !HIDDEN.has(m.phenomenon)).map(m => {
-        const meta = METRIC_META[m.phenomenon] || { label: m.phenomenon, unit: '', icon: '📌', color: '#8b9cb3', decimals: 1 };
-        const num = numericValue(m.phenomenon, m.value);
-        prevMap[m.phenomenon] = num;
-        const shown = displayValue(m.phenomenon, m.value);
+      const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      const card = key => {
+        const meta = METRIC_META[key] || { label: key, unit: '', icon: '📌', color: '#8b9cb3', decimals: 1 };
+        const m = byKey[key] || { phenomenon: key, value: null, updated_at: null, is_old: false };
+        const has = m.value != null && !isNaN(m.value);
+        const num = has ? numericValue(key, m.value) : NaN;
+        if (has) prevMap[key] = num;
+        const shown = has ? displayValue(key, m.value) : '—';
         // Prefer series trend (same as charts), else localStorage 30-min avg
-        const t = SERIES_TRENDS[m.phenomenon] || computeTrend(m.phenomenon, num);
-        return '<div class="metric-card" data-key="' + m.phenomenon + '" data-value="' + num + '">' +
+        const t = has ? (SERIES_TRENDS[key] || computeTrend(key, num)) : null;
+        const isPm = key === 'pm25' || key === 'pm10';
+        return '<div class="metric-card" data-key="' + key + '" data-value="' + num + '">' +
           '<div class="icon" style="background:' + meta.color + '22;color:' + meta.color + '">' + meta.icon + '</div>' +
-          '<div class="label"' + (meta.hint ? ' title="' + meta.hint.replace(/"/g, '&quot;') + '"' : '') + '>' + meta.label + (meta.hint ? ' <span style="opacity:.6;font-size:.7em;normal-case;letter-spacing:0">ⓘ</span>' : '') + '</div>' +
+          '<div class="label">' + meta.label + '</div>' +
+          (isPm && meta.full ? '<div class="decode">' + esc(meta.full) + '</div>' : '') +
           '<div class="value-row">' +
             '<div class="value">' + shown + '<span class="unit">' + meta.unit + '</span></div>' +
             '<span class="trend-slot">' + trendHtml(t, meta.decimals ?? 1) + '</span>' +
           '</div>' +
-          '<div class="updated">' + (m.is_old ? '⚠️ Застарілі · ' : '') + formatDate(m.updated_at) + '</div>' +
+          '<div class="updated">' + (m.is_old ? '⚠️ Застарілі · ' : '') + (m.updated_at ? formatDate(m.updated_at) : '') + '</div>' +
+          (isPm && meta.hint ? '<p class="metric-desc">' + esc(meta.hint) + '</p>' : '') +
           '</div>';
-      }).join('');
+      };
 
-      if (!USE_STATION_TEMP_HUM && LAST_METEO) applyModelToCards(LAST_METEO);
+      // Верхній ряд — пил, нижній — погода
+      document.getElementById('metrics-pm').innerHTML = ['pm25', 'pm10'].map(card).join('');
+      document.getElementById('metrics-weather').innerHTML = ['temperature', 'humidity', 'pressure_pa'].map(card).join('');
+
+      if (CARDS_FROM_OPEN_METEO && LAST_METEO) applyModelToCards(LAST_METEO);
       prevMap.aqi = aqi;
       // Push AFTER reading trends so this sample becomes history for next time
       setTimeout(() => savePrevReadings(prevMap), 800);
@@ -711,9 +736,8 @@
     function renderMeteo(meteo) {
       LAST_METEO = meteo;
       const st = meteo.station || {};
-      const useSt = USE_STATION_TEMP_HUM;
-      renderMiniChart('temp-chart', meteo.temp, '#f97316', '°C', 'trend-temp', 1, useSt ? st.temp : undefined);
-      renderMiniChart('hum-chart', meteo.humidity, '#22c55e', '%', 'trend-hum', 0, useSt ? st.humidity : undefined);
+      renderMiniChart('temp-chart', meteo.temp, '#f97316', '°C', 'trend-temp', 1, st.temp);
+      renderMiniChart('hum-chart', meteo.humidity, '#22c55e', '%', 'trend-hum', 0, st.humidity);
       renderMiniChart('press-chart', meteo.pressure_mmhg, '#a855f7', 'мм рт.ст.', 'trend-press', 1, st.pressure_mmhg);
 
       // Same trends on metric cards above charts
@@ -724,18 +748,19 @@
       if (tHum)   SERIES_TRENDS.humidity = tHum;
       if (tPress) SERIES_TRENDS.pressure_pa = tPress;
       applySeriesTrendsToCards();
-      if (!useSt) applyModelToCards(meteo);
+      if (CARDS_FROM_OPEN_METEO) applyModelToCards(meteo);
     }
 
-    /** Підставляє температуру й вологість з Open-Meteo в картки (замість завищеного датчика станції) */
+    /** Підставляє температуру, вологість і тиск з Open-Meteo в картки */
     function applyModelToCards(meteo) {
       if (!meteo) return;
       const cur = meteo.current || {};
       const lastOf = a => (a && a.length) ? a[a.length - 1] : null;
-      const lt = lastOf(meteo.temp), lh = lastOf(meteo.humidity);
+      const lt = lastOf(meteo.temp), lh = lastOf(meteo.humidity), lp = lastOf(meteo.pressure_mmhg);
       const items = {
         temperature: { v: cur.temp != null ? cur.temp : (lt ? lt[1] : null), t: cur.time || (lt ? lt[0] : null) },
         humidity: { v: cur.humidity != null ? cur.humidity : (lh ? lh[1] : null), t: cur.time || (lh ? lh[0] : null) },
+        pressure_pa: { v: cur.pressure != null ? cur.pressure : (lp ? lp[1] : null), t: cur.time || (lp ? lp[0] : null) },
       };
       document.querySelectorAll('.metric-card[data-key]').forEach(card => {
         const it = items[card.getAttribute('data-key')];
@@ -795,7 +820,9 @@
         out.pressure_mmhg.push([t, Math.round(HPA_TO_MMHG(h.surface_pressure[i]) * 10) / 10]);
       }
       if (data.current && data.current.temperature_2m != null) {
-        out.current = { temp: data.current.temperature_2m, humidity: data.current.relative_humidity_2m, time: data.current.time };
+        out.current = { temp: data.current.temperature_2m, humidity: data.current.relative_humidity_2m,
+          pressure: data.current.surface_pressure != null ? Math.round(HPA_TO_MMHG(data.current.surface_pressure) * 10) / 10 : null,
+          time: data.current.time };
       }
       return out;
     }
