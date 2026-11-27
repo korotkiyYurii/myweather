@@ -255,7 +255,7 @@
     const CORS_PROXIES = []; // публічні проксі не працюють з SaveEcoBot
     // Cloudflare Worker, що віддає дані SaveEcoBot із CORS-заголовками.
     // Вставте адресу свого Worker (без / в кінці). Поки тут <...>, сторінка бере дані з ./data/*.json
-    const PROXY_BASE = 'https://myweather-proxy.<ваш-акаунт>.workers.dev';
+    const PROXY_BASE = 'https://myweather-proxy.korotkij.workers.dev';
     const PROXY_ON = !PROXY_BASE.includes('<');
     // Картки «Температура», «Вологість», «Тиск» беруть поточні значення з Open-Meteo (координати станції).
     // На графіках додатково показується точка вимірювання станції (поля temperature / humidity / pressure_pa;
