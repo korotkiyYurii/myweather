@@ -1,9 +1,6 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="icon" href="favicon.png" type="image/png">
-<link rel="apple-touch-icon" href="favicon.png">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Погода в домі</title>
@@ -212,7 +209,7 @@
       <div class="mini-chart-card">
         <h4>🌡️ Температура <span class="mini-trend" id="trend-temp"></span></h4>
         <div class="mini-chart-wrap"><canvas id="temp-chart"></canvas></div>
-        <p class="note">Лінія — Open-Meteo (модель для координат станції), точка — вимір станції</p>
+        <p class="note">Лінія — Open-Meteo (модель для координат станції), точка — вимір станції, пунктир — прогноз на 12 год</p>
       </div>
       <div class="mini-chart-card">
         <h4>💧 Вологість <span class="mini-trend" id="trend-hum"></span></h4>
@@ -251,14 +248,14 @@
     const STATION_URL = './data/station.json';
     const HISTORY_AQI_URL = './data/aqi.json';
     const METEO_LOCAL = './data/meteo.json';
-    const METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe/Kyiv&forecast_days=1&current=temperature_2m,relative_humidity_2m,surface_pressure';
+    const METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=50.278178&longitude=28.617254&hourly=temperature_2m,relative_humidity_2m,surface_pressure&past_days=2&timezone=Europe/Kyiv&forecast_days=2&current=temperature_2m,relative_humidity_2m,surface_pressure';
     // SaveEcoBot блокує CORS з браузера — беремо через публічні проксі, далі локальний кеш Actions
     const STATION_LIVE = 'https://www.saveecobot.com/station/25862.json';
     const AQI_LIVE = 'https://www.saveecobot.com/maps/marker-popup-v2/uk/device/25862/aqi.json';
     const CORS_PROXIES = []; // публічні проксі не працюють з SaveEcoBot
     // Cloudflare Worker, що віддає дані SaveEcoBot із CORS-заголовками.
     // Вставте адресу свого Worker (без / в кінці). Поки тут <...>, сторінка бере дані з ./data/*.json
-    const PROXY_BASE = 'https://myweather-proxy.korotkij.workers.dev';
+    const PROXY_BASE = 'https://myweather-proxy.<ваш-акаунт>.workers.dev';
     const PROXY_ON = !PROXY_BASE.includes('<');
     // Картки «Температура», «Вологість», «Тиск» беруть поточні значення з Open-Meteo (координати станції).
     // На графіках додатково показується точка вимірювання станції (поля temperature / humidity / pressure_pa;
@@ -648,7 +645,7 @@
       });
     }
 
-    function renderMiniChart(canvasId, series, color, yLabel, trendElId, decimals, stationPoint) {
+    function renderMiniChart(canvasId, series, color, yLabel, trendElId, decimals, stationPoint, forecast) {
       if (!series || !series.length) return;
       // Sort & dedupe by time
       const cleaned = series
@@ -671,7 +668,13 @@
       opts.clip = false; // avoid cut-off artefacts; scale will fit all points
 
       const stVal = stationPoint ? +stationPoint[1] : null;
-      const allVals = stVal != null && !isNaN(stVal) ? values.concat(stVal) : values;
+      // Прогноз (пунктир): точки {x: час, y: значення}
+      const fcPts = (forecast || [])
+        .filter(p => p && p[1] != null && !isNaN(p[1]))
+        .map(([ft, fv]) => ({ x: new Date(withKyivOffset(String(ft).length <= 16 ? ft + ':00' : ft)).getTime(), y: +fv }))
+        .filter(pt => !isNaN(pt.x));
+      let allVals = stVal != null && !isNaN(stVal) ? values.concat(stVal) : values;
+      if (fcPts.length) allVals = allVals.concat(fcPts.map(pt => pt.y));
       const min = Math.min(...allVals), max = Math.max(...allVals);
       const span = Math.max(max - min, 0.5);
       const pad = Math.max(span * 0.2, 1);
@@ -683,6 +686,7 @@
       let t1 = new Date(labels[labels.length - 1]).getTime();
       const stationT = stationPoint ? new Date(withKyivOffset(String(stationPoint[0]).length <= 16 ? stationPoint[0] + ':00' : stationPoint[0])).getTime() : NaN;
       if (!isNaN(stationT) && stationT > t1) t1 = stationT;
+      if (fcPts.length) t1 = Math.max(t1, fcPts[fcPts.length - 1].x);
       if (!isNaN(t0) && !isNaN(t1) && t1 >= t0) {
         const xPad = Math.max((t1 - t0) * 0.02, 5 * 60 * 1000);
         opts.scales.x.min = t0 - xPad;
@@ -730,6 +734,21 @@
             pointRadius: 6,
             pointHoverRadius: 8,
             pointStyle: 'circle'
+          }] : []).concat(fcPts.length ? [{
+            label: 'Прогноз',
+            data: fcPts,
+            borderColor: color,
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            borderDash: [6, 5],
+            fill: false,
+            segment: isTemp
+              ? { borderColor: c => (c.p0.parsed.y < 0 || c.p1.parsed.y < 0) ? FROST : color }
+              : undefined,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHitRadius: 8
           }] : [])
         },
         options: opts
@@ -739,7 +758,7 @@
     function renderMeteo(meteo) {
       LAST_METEO = meteo;
       const st = meteo.station || {};
-      renderMiniChart('temp-chart', meteo.temp, '#f97316', '°C', 'trend-temp', 1, st.temp);
+      renderMiniChart('temp-chart', meteo.temp, '#f97316', '°C', 'trend-temp', 1, st.temp, meteo.forecast && meteo.forecast.temp);
       renderMiniChart('hum-chart', meteo.humidity, '#22c55e', '%', 'trend-hum', 0, st.humidity);
       renderMiniChart('press-chart', meteo.pressure_mmhg, '#a855f7', 'мм рт.ст.', 'trend-press', 1, st.pressure_mmhg);
 
@@ -811,16 +830,23 @@
       const startMs = now.getTime() - 48 * 3600 * 1000;
 
       const out = { temp: [], humidity: [], pressure_mmhg: [] };
+      const fcEndMs = now.getTime() + 12 * 3600 * 1000; // прогноз на 12 годин вперед
+      const fcTemp = [];
       for (let i = 0; i < h.time.length; i++) {
         const t = h.time[i]; // already Kyiv local from API timezone=Europe/Kyiv
         const ts = parseKyiv(t.length === 16 ? t + ':00' : t);
         if (!ts) continue;
         const ms = ts.getTime();
+        if (ms > endMs && ms <= fcEndMs && h.temperature_2m[i] != null) fcTemp.push([t, h.temperature_2m[i]]);
         if (ms < startMs || ms > endMs) continue;
         if (h.temperature_2m[i] == null) continue;
         out.temp.push([t, h.temperature_2m[i]]);
         out.humidity.push([t, h.relative_humidity_2m[i]]);
         out.pressure_mmhg.push([t, Math.round(HPA_TO_MMHG(h.surface_pressure[i]) * 10) / 10]);
+      }
+      if (fcTemp.length && out.temp.length) {
+        // починаємо з останньої фактичної точки, щоб пунктир продовжував суцільну лінію
+        out.forecast = { temp: [out.temp[out.temp.length - 1]].concat(fcTemp) };
       }
       if (data.current && data.current.temperature_2m != null) {
         out.current = { temp: data.current.temperature_2m, humidity: data.current.relative_humidity_2m,
