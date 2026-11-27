@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Погода в домі</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -255,7 +258,7 @@
     const CORS_PROXIES = []; // публічні проксі не працюють з SaveEcoBot
     // Cloudflare Worker, що віддає дані SaveEcoBot із CORS-заголовками.
     // Вставте адресу свого Worker (без / в кінці). Поки тут <...>, сторінка бере дані з ./data/*.json
-    const PROXY_BASE = 'https://myweather-proxy.korotkij.workers.dev';
+    const PROXY_BASE = 'https://myweather-proxy.<ваш-акаунт>.workers.dev';
     const PROXY_ON = !PROXY_BASE.includes('<');
     // Картки «Температура», «Вологість», «Тиск» беруть поточні значення з Open-Meteo (координати станції).
     // На графіках додатково показується точка вимірювання станції (поля temperature / humidity / pressure_pa;
