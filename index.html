@@ -209,7 +209,7 @@
       <div class="mini-chart-card">
         <h4>🌡️ Температура <span class="mini-trend" id="trend-temp"></span></h4>
         <div class="mini-chart-wrap"><canvas id="temp-chart"></canvas></div>
-        <p class="note">Лінія — Open-Meteo (модель для координат станції), точка — вимір станції, пунктир — прогноз на 12 год</p>
+        <p class="note">Суцільна лінія — Open-Meteo (модель для координат станції), точка — вимір станції, пунктир у сірій зоні — прогноз Open-Meteo на наступні 12 годин</p>
       </div>
       <div class="mini-chart-card">
         <h4>💧 Вологість <span class="mini-trend" id="trend-hum"></span></h4>
@@ -255,7 +255,7 @@
     const CORS_PROXIES = []; // публічні проксі не працюють з SaveEcoBot
     // Cloudflare Worker, що віддає дані SaveEcoBot із CORS-заголовками.
     // Вставте адресу свого Worker (без / в кінці). Поки тут <...>, сторінка бере дані з ./data/*.json
-    const PROXY_BASE = 'https://myweather-proxy.korotkij.workers.dev';
+    const PROXY_BASE = 'https://myweather-proxy.<ваш-акаунт>.workers.dev';
     const PROXY_ON = !PROXY_BASE.includes('<');
     // Картки «Температура», «Вологість», «Тиск» беруть поточні значення з Open-Meteo (координати станції).
     // На графіках додатково показується точка вимірювання станції (поля temperature / humidity / pressure_pa;
@@ -702,6 +702,42 @@
         opts.scales.y.grid.lineWidth = c => (c.tick && c.tick.value === 0) ? 2 : 1;
       }
 
+      // Підпис і легка підсвітка зони прогнозу прямо на графіку
+      const fcPlugin = {
+        id: 'forecastLabel',
+        beforeDatasetsDraw(chart) {
+          if (!fcPts.length) return;
+          const { ctx: c, chartArea: a, scales: sc } = chart;
+          const x0 = Math.max(sc.x.getPixelForValue(fcPts[0].x), a.left);
+          c.save();
+          c.fillStyle = 'rgba(148,163,184,0.08)';
+          c.fillRect(x0, a.top, a.right - x0, a.bottom - a.top);
+          c.restore();
+        },
+        afterDatasetsDraw(chart) {
+          if (!fcPts.length) return;
+          const { ctx: c, chartArea: a, scales: sc } = chart;
+          const x0 = Math.max(sc.x.getPixelForValue(fcPts[0].x), a.left);
+          const w = a.right - x0;
+          c.save();
+          c.font = '600 11px system-ui, sans-serif';
+          c.fillStyle = '#8b9cb3';
+          c.textAlign = 'center';
+          c.textBaseline = 'top';
+          const cx = x0 + w / 2;
+          const one = 'Прогноз на 12 год';
+          if (c.measureText(one).width <= w - 8) {
+            c.fillText(one, cx, a.top + 4);
+          } else if (c.measureText('на 12 год').width <= w - 4) {
+            c.fillText('Прогноз', cx, a.top + 4);
+            c.fillText('на 12 год', cx, a.top + 17);
+          } else {
+            c.fillText('Прогноз', cx, a.top + 4);
+          }
+          c.restore();
+        }
+      };
+
       miniCharts[canvasId] = new Chart(ctx, {
         type: 'line',
         data: {
@@ -751,7 +787,8 @@
             pointHitRadius: 8
           }] : [])
         },
-        options: opts
+        options: opts,
+        plugins: (isTemp && fcPts.length) ? [fcPlugin] : []
       });
     }
 
